@@ -4,21 +4,24 @@ import argparse
 import json
 import torch
 import numpy as np
-
-from tensorboardX import SummaryWriter
+import wandb
 
 import matplotlib
 matplotlib.use("Agg")
+
+from tqdm import tqdm
+from pathlib import Path
 
 from .unet.unet_model import UNet
 from .biggan.gan_load import make_big_gan
 from .utils.utils import to_image
 
-from .gan_mask_gen import MaskGenerator, MaskSynthesizing, it_mask_gen
+from .gan_mask_gen import MaskGenerator, it_mask_gen
 from .data import SegmentationDataset
 from .metrics import model_metrics, IoU, accuracy, F_max
 from .postprocessing import connected_components_filter, SegmentationInference, Threshold
 from .visualization import overlayed
+from segmlib import root_path
 
 
 DEFAULT_EVAL_KEY = 'id'
@@ -26,81 +29,35 @@ THR_EVAL_KEY = 'thr'
 SEGMENTATION_RES = 128
 
 
-MASK_SYNTHEZ_DICT = {
-    'lighting': MaskSynthesizing.LIGHTING,
-    'mean_thr': MaskSynthesizing.MEAN_THR,
-}
-
-
-class SegmentationTrainParams(object):
-    def __init__(self, **kwargs):
-        self.rate = 0.001
-        self.steps_per_rate_decay = 8000
-        self.rate_decay = 0.2
-        self.n_steps = 12000
-
-        self.latent_shift_r = 5.0
-        self.batch_size = 95
-
-        self.steps_per_log = 100
-        self.steps_per_checkpoint_save = 1000
-        self.steps_per_validation = 1000
-        self.test_samples_count = 1000
-
-        self.synthezing = MaskSynthesizing.LIGHTING
-        self.mask_size_up = 0.5
-        self.connected_components = True
-        self.maxes_filter = True
-
-        for key, val in kwargs.items():
-            if val is not None:
-                self.__dict__[key] = val
-
-        if isinstance(self.synthezing, str):
-            self.synthezing = MASK_SYNTHEZ_DICT[self.synthezing]
-
-
-def gen_postprocessing(params):
-    postprocessing = []
-    if params.connected_components:
-        postprocessing.append(connected_components_filter)
-    return postprocessing
-
-
-def train_segmentation(G, bg_direction, model, params, out_dir,
-                       gen_devices, val_dirs=None, zs=None, z_noise=0.0):
+def train_segmentation(G, direction, model, run, val_dirs, mask_postprocessing):
+    run_path = Path(wandb.run.dir).resolve()
+    wandb.watch(model)
     model.train()
-    os.makedirs(out_dir, exist_ok=True)
-    writer = SummaryWriter(os.path.join(out_dir, 'tensorboard'))
 
-    params.batch_size = params.batch_size // len(gen_devices)
-
-    if zs is not None and os.path.isfile(zs):
-        zs = torch.from_numpy(np.load(zs))
-    mask_postprocessing = gen_postprocessing(params)
-    mask_generator = MaskGenerator(
-        G, bg_direction, params, [], mask_postprocessing,
-        zs=zs, z_noise=z_noise).cuda().eval()
-    # form test batch
-    num_test_steps = params.test_samples_count // params.batch_size
+    batch_size = run.config.batch_size // len(run.config.gan_devices)
+    mask_generator = MaskGenerator(G, direction, run.config, batch_size,
+                                   mask_postprocessing=mask_postprocessing).cuda().eval()
+    num_test_steps = run.config.test_samples_count // batch_size
     test_samples = [mask_generator() for _ in range(num_test_steps)]
     test_samples = [[s[0].cpu(), s[1].cpu()] for s in test_samples]
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=params.rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=run.config.rate)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, params.steps_per_rate_decay, params.rate_decay)
+        optimizer, run.config.steps_per_rate_decay, run.config.rate_decay)
     criterion = torch.nn.CrossEntropyLoss()
 
     start_step = 0
-    checkpoint = os.path.join(out_dir, 'checkpoint.pth')
-    if os.path.isfile(checkpoint):
+    checkpoint = run_path / 'checkpoint.pth'
+    if checkpoint.is_file():
         start_step = load_checkpoint(model, optimizer, lr_scheduler, checkpoint)
         print('Starting from step {} checkpoint'.format(start_step))
 
-    print('start loop', flush=True)
-    for step, (img, ref) in enumerate(it_mask_gen(mask_generator, gen_devices,
-            torch.cuda.current_device())):
-        step += start_step
+    sample_generator = it_mask_gen(mask_generator, run.config.gan_devices, torch.cuda.current_device())
+    iterator = tqdm(range(run.config.n_epochs), desc='Training')
+    for epoch in iterator:
+        img, ref = next(sample_generator)
+
+        step = epoch + start_step
         model.zero_grad()
         prediction = model(img.cuda())
         loss = criterion(prediction, ref.cuda())
@@ -109,51 +66,48 @@ def train_segmentation(G, bg_direction, model, params, out_dir,
         optimizer.step()
         lr_scheduler.step()
 
-        if step > 0 and step % params.steps_per_checkpoint_save == 0:
-            print('Step {}: saving checkpoint'.format(step))
+        if step % run.config.steps_per_checkpoint_save == 0 and not run.disabled:
             save_checkpoint(model, optimizer, lr_scheduler, step, checkpoint)
 
-        if step % 10 == 0:
-            writer.add_scalar('train/loss', loss.item(), step)
-
-        if step > 0 and step % params.steps_per_log == 0:
+        if step % run.config.steps_per_log == 0:
             with torch.no_grad():
                 loss = 0.0
                 for img, ref in test_samples:
                     prediction = model(img.cuda())
                     loss += criterion(prediction, ref.cuda()).item()
             loss = loss / num_test_steps
-            print('{}% | step {}: {}'.format(
-                int(100.0 * step / params.n_steps), step, loss))
-            writer.add_scalar('val/loss', loss, step)
 
-        is_val_step = \
-            (step > 0 and step % params.steps_per_validation == 0) or (step == params.n_steps)
-        if is_val_step and val_dirs is not None:
-            print('Step: {} | evaluation'.format(step))
+            iterator.set_postfix_str(f'{type(criterion).__name__:.5}: {loss:.3}')
+
+        if step % run.config.steps_per_validation == 0 and (val_dirs is not None):
             model.eval()
             eval_dict = evaluate(
                 SegmentationInference(model, resize_to=SEGMENTATION_RES),
                 val_dirs[0], val_dirs[1], (F_max,))
-            update_out_json(eval_dict, os.path.join(out_dir, 'score.json'))
+            update_out_json(eval_dict, run_path / 'score.json')
             model.train()
-        if step == 0:
-            to_image(overlayed(img[:16], ref[:16].unsqueeze(1)), True).save(f'{out_dir}/gen_sample.png')
-        if step == params.n_steps:
-            break
+        if step % run.config.steps_per_log == 0:
+            wandb.log({'Segmentation Examples': [
+                wandb.Image(image.detach().cpu().numpy().transpose(1, 2, 0), masks={
+                    'predictions': {
+                        'mask_data': mask.detach().cpu().numpy(),
+                        'class_labels': {
+                            0: 'background',
+                            1: 'object'
+                        }
+                    }
+                }) for image, mask in zip(img[:run.config.n_examples], ref[:run.config.n_examples])
+            ]})
 
     model.eval()
-    torch.save(model.state_dict(), os.path.join(out_dir, 'segmentation.pth'))
-
-    return evaluate_gan_mask_generator(
-        model, G, bg_direction, params, mask_postprocessing, zs, z_noise, params.test_samples_count)
+    if not run.disabled:
+        torch.save(model.state_dict(), run_path / 'model.pth')
 
 
-def evaluate_gan_mask_generator(model, G, bg_direction, params,
-                                mask_postprocessing, zs, z_noise, num_steps):
-    mask_generator = MaskGenerator(
-        G, bg_direction, params, [], mask_postprocessing,
-        zs=zs, z_noise=z_noise).cuda().eval()
+def evaluate_gan_mask_generator(model, G, direction, run, mask_postprocessing):
+    batch_size = run.config.batch_size // len(run.config.gan_devices)
+    mask_generator = MaskGenerator(G, direction, run.config, batch_size,
+                                   mask_postprocessing=mask_postprocessing).cuda().eval()
     def it():
         while True:
             sample = mask_generator()
@@ -161,12 +115,9 @@ def evaluate_gan_mask_generator(model, G, bg_direction, params,
                 yield img.unsqueeze(0), mask
 
     score = {
-        DEFAULT_EVAL_KEY:
-            model_metrics(SegmentationInference(model), it(), num_steps, (F_max,)),
-        THR_EVAL_KEY:
-            model_metrics(Threshold(model), it(), num_steps, (IoU, accuracy)),
+        **model_metrics(SegmentationInference(model), it(), run.config.test_samples_count, (F_max,)),
+        **model_metrics(Threshold(model), it(), run.config.test_samples_count, (IoU, accuracy)),
     }
-
     return score
 
 
@@ -175,7 +126,8 @@ def save_checkpoint(model, opt, scheduler, step, checkpoint):
         'model': model.state_dict(),
         'opt': opt.state_dict(),
         'scheduler': scheduler.state_dict(),
-        'step': step}
+        'step': step
+    }
     torch.save(state_dict, checkpoint)
 
 

@@ -1,0 +1,74 @@
+batch_size:
+  desc: the size of minibatches
+  value: 64
+connected_components:
+  desc: whether to apply connected components filter or not
+  value: true
+device:
+  desc: CUDA device to train the segmentation model on
+  value: 0
+direction:
+  desc: latent direction weights path
+  value: weights/direction.pth
+embeddings:
+  desc: dataset images embeddings path
+  value: embeddings/flowers.npy
+gan_devices:
+  desc: CUDA devices for GAN to generate samples on
+  value:
+  - 0
+  - 1
+images:
+  desc: validation images directories
+  value: null
+latent_shift_r:
+  desc: norm of the shift along the latent direction
+  value: 5.0
+mask_size_up:
+  desc: null
+  value: 0.5
+masks:
+  desc: validation masks directories
+  value: null
+maxes_filter:
+  desc: null
+  value: true
+n_examples:
+  desc: number of examples of segmented images to show
+  value: 24
+n_epochs:
+  desc: number of epochs to train the model
+  value: 1000
+rate:
+  desc: learning rate
+  value: 0.001
+rate_decay:
+  desc: learning rate decay
+  value: 0.2
+seed:
+  desc: random seed (not fixed by default)
+  value: 42
+steps_per_checkpoint_save:
+  desc: steps per saving a checkpoint
+  value: 1000
+steps_per_log:
+  desc: steps per logging
+  value: 100
+steps_per_rate_decay:
+  desc: steps per learning rate decay
+  value: 8000
+steps_per_validation:
+  desc: steps per validation
+  value: 1000
+synthezing:
+  desc: null
+  value: lighting
+test_samples_count:
+  desc: null
+  value: 1000
+weights:
+  desc: GAN weights path
+  value: weights/bigbigan.pth
+z_noise:
+  desc: amplitude of z noise
+  value: 0.0

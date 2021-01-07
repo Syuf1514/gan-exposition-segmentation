@@ -1,67 +1,47 @@
 
 import argparse
-import json
 import torch
+import wandb
+import os
 
 from pathlib import Path
 
-from segmlib import weights_path
+from segmlib import root_path
 from segmlib.unet.unet_model import UNet
 from segmlib.biggan.gan_load import make_big_gan
-from .training import SegmentationTrainParams, train_segmentation, update_out_json, evaluate_all_wrappers
+from segmlib.training import train_segmentation, evaluate_all_wrappers, evaluate_gan_mask_generator
+from segmlib.postprocessing import connected_components_filter
 
 
-parser = argparse.ArgumentParser(description='GAN-based unsupervised segmentation training')
-parser.add_argument('--args', help='path to the json file with all the arguments')
-
-parser.add_argument('--out', default='results', help='output folder path')
-parser.add_argument('--weights', default=str(weights_path / 'bigbigan.pth'), help='GAN weights path')
-parser.add_argument('--direction', default=str(weights_path / 'direction.pth'), help='latent direction weights path')
-parser.add_argument('--embeddings', help='dataset images embeddings path')
-parser.add_argument('--z_noise', type=float, default=0.0, help='amplitude of z noise')
-
-parser.add_argument('--images', nargs='*', default=[None], help='validation images directories')
-parser.add_argument('--masks', nargs='*', default=[None], help='validation masks directories')
-
-parser.add_argument('--device', type=int, default=0, help='device to train the segmentation model on')
-parser.add_argument('--gen_devices', type=int, nargs='+', default=[0, 1], help='devices for GAN to generate samples on')
-parser.add_argument('--seed', type=int, help='random seed')
-
-for key, value in SegmentationTrainParams().__dict__.items():
-    value_type = type(value) if key != 'synthezing' else str
-    parser.add_argument(f'--{key}', type=value_type)
-
-args = parser.parse_args()
+os.environ['WANDB_SILENT'] = 'true'
 
 
-if args.args is not None:
-    json_args = json.load(open(args.args))
-    namespace = argparse.Namespace()
-    namespace.__dict__.update(json_args)
-    args = parser.parse_args(namespace=namespace)
+parser = argparse.ArgumentParser(description='GAN-based unsupervised segmentation')
+parser.add_argument('--wandb', default='online', help='wandb mode, one of [online, offline, disabled]')
+parser.add_argument('--config', default='configs/light.yaml', help='path to the yaml file with all the parameters')
+run_args, other_args = parser.parse_known_args()
 
-out = Path(args.out).resolve()
-out.mkdir(exist_ok=True)
+run = wandb.init(project='gan-exposition-segmentation', dir=root_path, mode=run_args.wandb, config=run_args.config)
+parser = argparse.ArgumentParser()
+for arg_name, arg_default in run.config.items():
+    parser.add_argument(f'--{arg_name}', type=type(arg_default), default=arg_default)
+params = parser.parse_args(other_args)
+run.config.update(params, allow_val_change=True)
 
-json.dump(args.__dict__, open(out / 'args.json', 'w'))
+if run.config.seed is not None:
+    torch.random.manual_seed(run.config.seed)
+torch.cuda.set_device(run.config.device)
 
-
-if args.seed is not None:
-    torch.random.manual_seed(args.seed)
-torch.cuda.set_device(args.device)
-
-G = make_big_gan(args.weights).eval().cuda()
-bg_direction = torch.load(args.direction)
-
+G = make_big_gan(run.config.weights).eval().cuda()
 model = UNet().train().cuda()
-train_params = SegmentationTrainParams(**args.__dict__)
 
-synthetic_score = train_segmentation(G, bg_direction, model, train_params, str(out), args.gen_devices,
-                                     val_dirs=[args.images[0], args.masks[0]], zs=args.embeddings, z_noise=args.z_noise)
+val_dirs = [args.images[0], args.masks[0]] if run.config.images and run.config.masks else None
+mask_postprocessing = [connected_components_filter] if run.config.connected_components else []
+direction = torch.load(run.config.direction)
 
-score_json = out / 'score.json'
-update_out_json({'synthetic': synthetic_score}, score_json)
-print(f'Synthetic data score: {synthetic_score}')
+train_segmentation(G, direction, model, run, val_dirs, mask_postprocessing)
+metrics = evaluate_gan_mask_generator(model, G, direction, run, mask_postprocessing)
+wandb.log(metrics)
 
-if args.val_images_dirs:
-    evaluate_all_wrappers(model, score_json, args.images, args.masks)
+if val_dirs is not None:
+    evaluate_all_wrappers(model, score_json, run.config.images, run.config.masks)

@@ -10,11 +10,6 @@ from .utils.utils import make_noise, run_in_background
 from .utils.prefetch_generator import background
 
 
-class MaskSynthesizing(Enum):
-    LIGHTING = 0
-    MEAN_THR = 1
-
-
 def rgb2gray(img):
     gray = 0.2989 * img[:, 0] + 0.5870 * img[:, 1] + 0.1140 * img[:, 2]
     return gray
@@ -47,19 +42,22 @@ def maxes_filter(shifted_images):
 
 
 class MaskGenerator(nn.Module):
-    def __init__(self, G, bg_direction, params,
-                 mask_preprocessing=(), mask_postprocessing=(),
-                 zs=None, z_noise=0.0):
+    def __init__(self, G, bg_direction, config, batch_size, mask_preprocessing=(), mask_postprocessing=()):
         super(MaskGenerator, self).__init__()
         self.G = G
         self.bg_direction = bg_direction
-        self.p = params
+
+        self.mask_size_up = config.mask_size_up
+        self.maxes_filter = config.maxes_filter
+        self.batch_size = batch_size
+        self.latent_shift_r = config.latent_shift_r
+        self.synthezing = config.synthezing
 
         self.mask_preprocessing = mask_preprocessing
         self.mask_postprocessing = mask_postprocessing
 
-        self.zs = zs
-        self.z_noise = nn.Parameter(torch.tensor(z_noise, device='cpu'), requires_grad=False)
+        self.zs = torch.from_numpy(np.load(config.embeddings)) if (config.embeddings is not None) else None
+        self.z_noise = nn.Parameter(torch.tensor(config.z_noise, device='cpu'), requires_grad=False)
 
     @torch.no_grad()
     def make_noise(self, batch_size):
@@ -81,12 +79,12 @@ class MaskGenerator(nn.Module):
             z = self.make_noise(batch_size)
         img = self.G(z)
         img_shifted_pos = self.G.gen_shifted(
-            z, self.p.latent_shift_r * self.bg_direction.to(z.device))
+            z, self.latent_shift_r * self.bg_direction.to(z.device))
 
-        if self.p.synthezing == MaskSynthesizing.LIGHTING:
+        if self.synthezing == 'lighting':
             mask = pair_to_mask(img, img_shifted_pos)
 
-        elif self.p.synthezing == MaskSynthesizing.MEAN_THR:
+        elif self.synthezing == 'mean_thr':
             mask = mean_thr_mask(img_shifted_pos)
 
         mask = self._apply_postproc(img, mask)
@@ -107,10 +105,10 @@ class MaskGenerator(nn.Module):
 
     @torch.no_grad()
     def filter_by_area(self, img_batch, img_pos_batch, ref_batch):
-        if self.p.mask_size_up < 1.0:
+        if self.mask_size_up < 1.0:
             ref_size = ref_batch.shape[-2] * ref_batch.shape[-1]
             ref_fraction = ref_batch.sum(dim=[-1, -2]).to(torch.float) / ref_size
-            mask = ref_fraction < self.p.mask_size_up
+            mask = ref_fraction < self.mask_size_up
             if torch.all(~mask):
                 return None
             img_batch, img_pos_batch, ref_batch = \
@@ -119,7 +117,7 @@ class MaskGenerator(nn.Module):
 
     @torch.no_grad()
     def filter_by_maxes_count(self, img_batch, img_pos_batch, ref_batch):
-        if self.p.maxes_filter:
+        if self.maxes_filter:
             mask = maxes_filter(img_pos_batch)
             if torch.all(~mask):
                 return None
@@ -131,13 +129,13 @@ class MaskGenerator(nn.Module):
     def forward(self, max_retries=100, z=None, return_steps=False):
         img, ref = None, None
         step = 0
-        while img is None or img.shape[0] < self.p.batch_size:
+        while img is None or img.shape[0] < self.batch_size:
             step += 1
             if step > max_retries:
                 raise Exception('generator was disable to synthesize mask')
 
             if z is None or step > 1:
-                z = self.make_noise(self.p.batch_size)
+                z = self.make_noise(self.batch_size)
 
             img_batch, img_pos_batch, ref_batch = \
                 self.gen_samples(z=z)
@@ -159,8 +157,8 @@ class MaskGenerator(nn.Module):
             if img is None:
                 img, ref = img_batch, ref_batch
             else:
-                img = torch.cat([img, img_batch])[:self.p.batch_size]
-                ref = torch.cat([ref, ref_batch])[:self.p.batch_size]
+                img = torch.cat([img, img_batch])[:self.batch_size]
+                ref = torch.cat([ref, ref_batch])[:self.batch_size]
 
         if return_steps:
             return img, ref, step
