@@ -1,6 +1,5 @@
 import torch
 import itertools as tls
-import numpy as np
 
 from torch.utils.data import IterableDataset, Dataset
 from torchvision import transforms
@@ -8,7 +7,7 @@ from PIL import Image
 from pathlib import Path
 
 from .postprocessing import connected_components_filter
-from .gan_mask_gen import MaskGenerator, it_mask_gen
+from .gan_mask_gen import MaskGenerator
 
 
 class MaskGeneratorDataset(IterableDataset):
@@ -29,16 +28,16 @@ class MaskGeneratorDataset(IterableDataset):
         return self.length
 
 
+# TODO: try PIL.Image.convert('RGB')
+
 class SegmentationDataset(Dataset):
-    def __init__(self, path, resolution, mask_type='default'):
+    def __init__(self, path, resolution, mask_type=None):
         self.path = Path(path).resolve()
         self.resolution = resolution
-        if mask_type == 'default':
-            mask_processing = self._default_mask_processing
-        elif mask_type == 'flowers':
-            mask_processing = self._flowers_mask_processing
+        if mask_type == 'flowers':
+            self._mask_processing = self._flowers_mask_processing
         else:
-            raise ValueError(f'unknown mask type "{mask_type}"')
+            self._mask_processing = self._default_mask_processing
 
         images = {file.stem: file for file in self.path.glob('images/*')}
         masks = {file.stem: file for file in self.path.glob('masks/*')}
@@ -46,15 +45,19 @@ class SegmentationDataset(Dataset):
             raise RuntimeError(f'images and masks filenames are not aligned in "{self.path}"')
         self.items = [(images[name], masks[name]) for name in images]
 
-        self.image_transforms = transforms.Compose([
+        self.basic_transforms = transforms.Compose([
             Image.open,
             transforms.Resize(resolution),
             transforms.CenterCrop(resolution),
             transforms.ToTensor()
         ])
+        self.image_transforms = transforms.Compose([
+            self.basic_transforms,
+            self._image_processing
+        ])
         self.mask_transforms = transforms.Compose([
-            self.image_transforms,
-            mask_processing
+            self.basic_transforms,
+            self._mask_processing
         ])
 
     def __getitem__(self, item):
@@ -71,10 +74,15 @@ class SegmentationDataset(Dataset):
         return Image.fromarray(result.numpy())
 
     @staticmethod
+    def _image_processing(tensor):
+        if tensor.size(0) == 1:
+            tensor = tensor.repeat(3, 1, 1)
+        elif tensor.size(0) != 3:
+            raise RuntimeError(f'expected image to have 1 or 3 channels, got {tensor.size(0)}')
+        return tensor
+
+    @staticmethod
     def _default_mask_processing(tensor):
-        if tensor.size(0) != 1:
-            raise RuntimeError(f'expected to have one channel in mask, got {tensor.size(0)} '
-                               '(set mask_type="flowers" if you are loading the flowers dataset)')
         mask = torch.where(tensor[0] > 0.5, 1, 0)
         return mask
 

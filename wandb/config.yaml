@@ -18,7 +18,7 @@ devices:
   value:
     - 0
     - 1
-datasets:
+test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
     - data/flowers
@@ -46,10 +46,10 @@ steps_per_rate_decay:
 synthezing:
   desc: null
   value: lighting
-valid_samples_n:
+valid_samples:
   desc: number of samples to validate trained model on
   value: 64
-train_samples_n:
+train_samples:
   desc: number of samples to use on each epoch for training the model
   value: 640
 weights:
@@ -58,6 +58,9 @@ weights:
 z_noise:
   desc: amplitude of z noise
   value: 0.0
-epochs_n:
+epochs:
   desc: number of epochs to train the model
   value: 10
+debug:
+  desc: set to number of batches if want a debugging run
+  value: false
