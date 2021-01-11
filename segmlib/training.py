@@ -1,16 +1,11 @@
 import os
 import sys
 import argparse
-import json
 import torch
 import numpy as np
 import wandb
 
-import matplotlib
-matplotlib.use("Agg")
-
 from tqdm import tqdm
-from pathlib import Path
 
 from .unet.unet_model import UNet
 from .biggan.gan_load import make_big_gan
@@ -20,7 +15,6 @@ from .gan_mask_gen import MaskGenerator, it_mask_gen
 from .data import SegmentationDataset
 from .metrics import model_metrics, IoU, accuracy, F_max
 from .postprocessing import connected_components_filter, SegmentationInference, Threshold
-from .visualization import overlayed
 from segmlib import root_path
 
 
@@ -29,28 +23,26 @@ THR_EVAL_KEY = 'thr'
 SEGMENTATION_RES = 128
 
 
-def train_segmentation(G, direction, model, run, val_dirs, mask_postprocessing):
-    run_path = Path(wandb.run.dir).resolve()
-    wandb.watch(model)
+def train_segmentation(gan, direction, model, run, val_dirs, mask_postprocessing):
+    run_path = Path(run.dir).resolve()
     model.train()
 
     batch_size = run.config.batch_size // len(run.config.gan_devices)
-    mask_generator = MaskGenerator(G, direction, run.config, batch_size,
+    mask_generator = MaskGenerator(gan, direction, run.config, batch_size,
                                    mask_postprocessing=mask_postprocessing).cuda().eval()
     num_test_steps = run.config.test_samples_count // batch_size
     test_samples = [mask_generator() for _ in range(num_test_steps)]
     test_samples = [[s[0].cpu(), s[1].cpu()] for s in test_samples]
 
     optimizer = torch.optim.Adam(model.parameters(), lr=run.config.rate)
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, run.config.steps_per_rate_decay, run.config.rate_decay)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, run.config.steps_per_rate_decay, run.config.rate_decay)
     criterion = torch.nn.CrossEntropyLoss()
 
-    start_step = 0
-    checkpoint = run_path / 'checkpoint.pth'
-    if checkpoint.is_file():
-        start_step = load_checkpoint(model, optimizer, lr_scheduler, checkpoint)
-        print('Starting from step {} checkpoint'.format(start_step))
+    # start_step = 0
+    # checkpoint = run_path / 'checkpoint.pth'
+    # if checkpoint.is_file():
+    #     start_step = load_checkpoint(model, optimizer, lr_scheduler, checkpoint)
+    #     print('Starting from step {} checkpoint'.format(start_step))
 
     sample_generator = it_mask_gen(mask_generator, run.config.gan_devices, torch.cuda.current_device())
     iterator = tqdm(range(run.config.n_epochs), desc='Training')
@@ -81,13 +73,11 @@ def train_segmentation(G, direction, model, run, val_dirs, mask_postprocessing):
 
         if step % run.config.steps_per_validation == 0 and (val_dirs is not None):
             model.eval()
-            eval_dict = evaluate(
-                SegmentationInference(model, resize_to=SEGMENTATION_RES),
-                val_dirs[0], val_dirs[1], (F_max,))
-            update_out_json(eval_dict, run_path / 'score.json')
+            eval_dict = evaluate(SegmentationInference(model, resize_to=SEGMENTATION_RES),
+                                 val_dirs[0], val_dirs[1], (F_max,))
             model.train()
         if step % run.config.steps_per_log == 0:
-            wandb.log({'Segmentation Examples': [
+            run.log({'Segmentation Examples': [
                 wandb.Image(image.detach().cpu().numpy().transpose(1, 2, 0), masks={
                     'predictions': {
                         'mask_data': mask.detach().cpu().numpy(),
@@ -104,9 +94,9 @@ def train_segmentation(G, direction, model, run, val_dirs, mask_postprocessing):
         torch.save(model.state_dict(), run_path / 'model.pth')
 
 
-def evaluate_gan_mask_generator(model, G, direction, run, mask_postprocessing):
+def evaluate_gan_mask_generator(model, gan, direction, run, mask_postprocessing):
     batch_size = run.config.batch_size // len(run.config.gan_devices)
-    mask_generator = MaskGenerator(G, direction, run.config, batch_size,
+    mask_generator = MaskGenerator(gan, direction, run.config, batch_size,
                                    mask_postprocessing=mask_postprocessing).cuda().eval()
     def it():
         while True:
@@ -139,17 +129,6 @@ def load_checkpoint(model, opt, scheduler, checkpoint):
     return state_dict['step']
 
 
-def update_out_json(eval_dict, out_json):
-    out_dict = {}
-    if os.path.isfile(out_json):
-        with open(out_json, 'r') as f:
-            out_dict = json.load(f)
-
-    with open(out_json, 'w') as out:
-        out_dict.update(eval_dict)
-        json.dump(out_dict, out)
-
-
 @torch.no_grad()
 def evaluate(segmentation_model, images_dir, masks_dir, metrics, size=None):
     segmentation_dl = torch.utils.data.DataLoader(
@@ -169,13 +148,9 @@ def keys_in_dict_tree(dict_tree, keys):
 
 
 @torch.no_grad()
-def evaluate_all_wrappers(model, out_file, val_images_dirs, val_masks_dirs):
+def evaluate_all_wrappers(model, val_images_dirs, val_masks_dirs):
     model.eval()
     evaluation_dict = {}
-    if os.path.isfile(out_file):
-        with open(out_file, 'r') as f:
-            evaluation_dict = json.load(f)
-
     for val_imgs, val_dirs in zip(val_images_dirs, val_masks_dirs):
         ds_name = val_imgs.split('/')[-2]
         print('\nEvaluating {}'.format(ds_name))
@@ -186,9 +161,10 @@ def evaluate_all_wrappers(model, out_file, val_images_dirs, val_masks_dirs):
             evaluation_dict[ds_name][DEFAULT_EVAL_KEY] = evaluate(
                 SegmentationInference(model, resize_to=SEGMENTATION_RES),
                 val_imgs, val_dirs, (F_max,))
-            update_out_json(evaluation_dict, out_file)
+            # update_out_json(evaluation_dict, out_file)
 
         if not keys_in_dict_tree(evaluation_dict, [ds_name, THR_EVAL_KEY]):
             evaluation_dict[ds_name][THR_EVAL_KEY] = evaluate(
                 Threshold(model, resize_to=SEGMENTATION_RES), val_imgs, val_dirs, (IoU, accuracy))
-            update_out_json(evaluation_dict, out_file)
+            # update_out_json(evaluation_dict, out_file)
+    return evaluation_dict

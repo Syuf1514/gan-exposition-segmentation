@@ -42,14 +42,14 @@ def maxes_filter(shifted_images):
 
 
 class MaskGenerator(nn.Module):
-    def __init__(self, G, bg_direction, config, batch_size, mask_preprocessing=(), mask_postprocessing=()):
+    def __init__(self, G, bg_direction, config, mask_preprocessing=(), mask_postprocessing=()):
         super(MaskGenerator, self).__init__()
         self.G = G
         self.bg_direction = bg_direction
 
         self.mask_size_up = config.mask_size_up
         self.maxes_filter = config.maxes_filter
-        self.batch_size = batch_size
+        self.batch_size = config.gan_batch_size
         self.latent_shift_r = config.latent_shift_r
         self.synthezing = config.synthezing
 
