@@ -3,8 +3,8 @@ import torch
 import wandb
 import pytorch_lightning as pl
 import os
-import logging
 import warnings
+import logging
 
 from pathlib import Path
 from torch.utils.data import DataLoader
@@ -14,6 +14,7 @@ from segmlib.unet.unet_model import UNet
 from segmlib.biggan.gan_load import make_big_gan
 from segmlib.dataset import MaskGeneratorDataset, SegmentationDataset
 from segmlib.model import SegmentationModel
+from segmlib.mask_generator import MaskGenerator
 
 
 os.environ['WANDB_SILENT'] = 'true'
@@ -36,13 +37,15 @@ run.config.update(params, allow_val_change=True)
 if run.config.seed is not None:
     pl.seed_everything(run.config.seed)
 
-gan = make_big_gan(run.config.weights).eval().cuda(0)
-backbone = UNet().train().cuda(1)
-direction = torch.load(run.config.direction)
+gan = make_big_gan(run.config.weights).eval()
+parallel_gan = torch.nn.DataParallel(gan.to(run.config.devices[0]), device_ids=run.config.devices)
+mask_generator = MaskGenerator(parallel_gan, gan.dim_z, run.config)
+
+backbone = UNet()
 test_sets_names = [Path(path).resolve().stem for path in run.config.test_datasets]
 
-train_set = MaskGeneratorDataset(gan, direction, run.config, length=run.config.train_samples)
-valid_set = MaskGeneratorDataset(gan, direction, run.config, length=run.config.valid_samples)
+train_set = MaskGeneratorDataset(mask_generator, length=run.config.train_samples)
+valid_set = MaskGeneratorDataset(mask_generator, length=run.config.valid_samples)
 test_sets = [SegmentationDataset(path, resolution=128, mask_type=name)
              for name, path in zip(test_sets_names, run.config.test_datasets)]
 train_loader = DataLoader(train_set, batch_size=run.config.model_batch_size)
@@ -52,7 +55,7 @@ test_loaders = [DataLoader(test_set, batch_size=run.config.model_batch_size, num
 
 trainer = pl.Trainer(
     logger=False,
-    gpus=[1],
+    gpus=run.config.devices,
     max_epochs=run.config.epochs,
     default_root_dir=run.dir,
     fast_dev_run=run.config.debug,

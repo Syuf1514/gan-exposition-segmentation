@@ -6,22 +6,18 @@ from torchvision import transforms
 from PIL import Image
 from pathlib import Path
 
-from .postprocessing import connected_components_filter
-from .gan_mask_gen import MaskGenerator
-
 
 class MaskGeneratorDataset(IterableDataset):
-    def __init__(self, gan, direction, config, length):
+    def __init__(self, mask_generator, length):
         super().__init__()
+        self.mask_generator = mask_generator
         self.length = length
-        mask_postprocessing = [connected_components_filter] if config.connected_components else []
-        self.mask_generator = MaskGenerator(gan, direction, config, (), mask_postprocessing).cuda().eval()
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
         if worker_info is not None:
             raise RuntimeError('single process data loading is recommended')
-        iterator = tls.islice(tls.chain.from_iterable(zip(*self.mask_generator()) for _ in tls.count()), self.length)
+        iterator = tls.islice(tls.chain.from_iterable(self.mask_generator() for _ in tls.count()), self.length)
         return iterator
 
     def __len__(self):

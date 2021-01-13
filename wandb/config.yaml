@@ -12,7 +12,7 @@ direction:
   value: weights/direction.pth
 embeddings:
   desc: dataset images embeddings path
-  value: embeddings/flowers.npy
+  value: embeddings/flowers.pth
 devices:
   desc: CUDA devices to use
   value:
@@ -22,14 +22,17 @@ test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
     - data/flowers
-latent_shift_r:
+z_shift:
   desc: norm of the shift along the latent direction
   value: 5.0
-mask_size_up:
-  desc: null
+mask_size_bound:
+  desc: upper bound of the mask size when rejecting a sample
   value: 0.5
+mask_size_filter:
+  desc: whether to apply mask size filter to generated samples or not
+  value: true
 maxes_filter:
-  desc: null
+  desc: whether to apply maxes filter to generated samples or not
   value: true
 learning_rate:
   desc: learning rate
@@ -64,3 +67,12 @@ epochs:
 debug:
   desc: set to number of batches if want a debugging run
   value: false
+gan_max_retries:
+  desc: maximum value of retries for GAN to sample an image
+  value: 100
+components_area_bound:
+  desc: connected component area lower bound with respect to the maximum component area in the mask
+  value: 0.2
+fbeta_beta:
+  desc: beta value for the F_beta metric
+  value: 0.3

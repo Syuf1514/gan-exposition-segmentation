@@ -37,10 +37,9 @@ def make_biggan_config(resolution):
     return config
 
 
-@gan_with_shift
+# @gan_with_shift
 def make_big_gan(weights_root, resolution=128):
     config = make_biggan_config(resolution)
-    G = BigGAN.Generator(**config)
-    G.load_state_dict(torch.load(weights_root, map_location=torch.device('cpu')), strict=False)
-
-    return UnconditionalBigGAN(G).cuda()
+    gan = BigGAN.Generator(**config)
+    gan.load_state_dict(torch.load(weights_root, map_location=torch.device('cpu')), strict=False)
+    return UnconditionalBigGAN(gan)

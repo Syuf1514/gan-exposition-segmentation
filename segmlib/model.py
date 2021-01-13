@@ -4,11 +4,6 @@ import numpy as np
 
 from wandb import Image
 from pytorch_lightning.metrics.functional import accuracy, iou, fbeta
-from pathlib import Path
-
-
-def fmax(mask_hat, mask, classes_n, betas):
-    return max(fbeta(mask_hat, mask, classes_n, beta) for beta in betas)
 
 
 class SegmentationModel(pl.LightningModule):
@@ -25,8 +20,6 @@ class SegmentationModel(pl.LightningModule):
         self.hparams = hparams
         self.criterion = torch.nn.CrossEntropyLoss()
         self.last_validation_batch = None
-        self.test_datasets = [Path(path).resolve().stem for path in run.config.test_datasets]
-        run.watch(backbone)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.backbone.parameters(), self.hparams.learning_rate)
@@ -37,8 +30,8 @@ class SegmentationModel(pl.LightningModule):
             'lr_scheduler': lr_scheduler
         }
 
-    def forward(self, x):
-        segmentation = self.backbone(x)
+    def forward(self, images):
+        segmentation = self.backbone(images).argmax(dim=1)
         return segmentation
 
     def training_step(self, batch, batch_idx):
@@ -76,7 +69,4 @@ class SegmentationModel(pl.LightningModule):
         for mask, mask_hat in zip(masks, masks_hat):
             self.log('accuracy', accuracy(mask_hat, mask))
             self.log('iou', iou(mask_hat, mask))
-            self.log('fmax', fmax(mask_hat, mask, len(self.class_labels), self.fmax_betas))
-
-
-
+            self.log('fbeta', fbeta(mask_hat, mask, len(self.class_labels), beta=self.hparams.fbeta_beta))
