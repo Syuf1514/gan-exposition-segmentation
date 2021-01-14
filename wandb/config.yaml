@@ -3,7 +3,7 @@ model_batch_size:
   value: 64
 gan_batch_size:
   desc: the size of minibatches for GAN generator
-  value: 64
+  value: 128
 connected_components:
   desc: whether to apply connected components filter or not
   value: true
@@ -13,11 +13,12 @@ direction:
 embeddings:
   desc: dataset images embeddings path
   value: embeddings/flowers.pth
-devices:
-  desc: CUDA devices to use
-  value:
-    - 0
-    - 1
+model_device:
+  desc: CUDA device to use for the model training
+  value: 0
+gan_device:
+  desc: CUDA device to use for generating images with the GAN
+  value: 1
 test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
@@ -42,7 +43,7 @@ rate_decay:
   value: 0.2
 seed:
   desc: random seed (not fixed by default)
-  value: null
+  value: 42
 steps_per_rate_decay:
   desc: steps per learning rate decay
   value: 8000
@@ -51,10 +52,10 @@ synthezing:
   value: lighting
 valid_samples:
   desc: number of samples to validate trained model on
-  value: 64
+  value: 1000
 train_samples:
   desc: number of samples to use on each epoch for training the model
-  value: 640
+  value: 10000
 weights:
   desc: GAN weights path
   value: weights/bigbigan.pth
@@ -63,10 +64,7 @@ z_noise:
   value: 0.0
 epochs:
   desc: number of epochs to train the model
-  value: 10
-debug:
-  desc: set to number of batches if want a debugging run
-  value: false
+  value: 1
 gan_max_retries:
   desc: maximum value of retries for GAN to sample an image
   value: 100

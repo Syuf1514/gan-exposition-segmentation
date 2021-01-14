@@ -15,7 +15,7 @@ class MaskGeneratorDataset(IterableDataset):
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
-        if worker_info is not None:
+        if (worker_info is not None) and (worker_info.num_workers > 1):
             raise RuntimeError('single process data loading is recommended')
         iterator = tls.islice(tls.chain.from_iterable(self.mask_generator() for _ in tls.count()), self.length)
         return iterator
@@ -23,8 +23,6 @@ class MaskGeneratorDataset(IterableDataset):
     def __len__(self):
         return self.length
 
-
-# TODO: try PIL.Image.convert('RGB')
 
 class SegmentationDataset(Dataset):
     def __init__(self, path, resolution, mask_type=None):

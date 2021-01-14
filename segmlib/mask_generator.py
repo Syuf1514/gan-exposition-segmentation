@@ -24,6 +24,7 @@ class MaskGenerator:
         self.components_area_bound = config.components_area_bound
         self.connected_components = config.connected_components
         self.fbeta_beta = config.fbeta_beta
+        self.gan_device = config.gan_device
 
         if config.embeddings is None:
             self.embeddings = torch.zeros(1, z_dim)
@@ -70,9 +71,9 @@ class MaskGenerator:
         z_codes = self.embeddings[z_idx] + self.z_noise * torch.randn(self.gan_batch_size, self.z_dim)
         shifted_z_codes = z_codes + self.z_shift * self.direction
         with torch.no_grad():
-            images = self.gan(z_codes).cpu()
+            images = self.gan(z_codes.cuda(self.gan_device)).cpu()
             images = self._normalize_gan_output(images)
-            shifted_images = self.gan(shifted_z_codes).cpu()
+            shifted_images = self.gan(shifted_z_codes.cuda(self.gan_device)).cpu()
             shifted_images = self._normalize_gan_output(shifted_images)
         masks = self._extract_masks(images, shifted_images)
         batch = [self._postprocessing(image, shifted_image, mask)

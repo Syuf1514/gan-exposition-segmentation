@@ -1,7 +1,6 @@
 import torch
 from torch import nn
-from .model import BigGAN
-from .gan_with_shift import gan_with_shift
+from . import BigGAN
 
 
 class UnconditionalBigGAN(nn.Module):
@@ -37,7 +36,6 @@ def make_biggan_config(resolution):
     return config
 
 
-# @gan_with_shift
 def make_big_gan(weights_root, resolution=128):
     config = make_biggan_config(resolution)
     gan = BigGAN.Generator(**config)

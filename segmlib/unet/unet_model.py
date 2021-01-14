@@ -6,12 +6,12 @@ from .unet_parts import DoubleConv, Down, Up, OutConv
 
 
 class UNet(nn.Module):
-    def __init__(self, n_channels=3, out_channels=2, bilinear=True):
-        super(UNet, self).__init__()
-        self.n_channels = n_channels
+    def __init__(self, in_channels, out_channels, bilinear=True):
+        super().__init__()
+        self.n_channels = in_channels
         self.bilinear = bilinear
 
-        self.inc = DoubleConv(n_channels, 64)
+        self.inc = DoubleConv(in_channels, 64)
         self.down1 = Down(64, 128)
         self.down2 = Down(128, 256)
         self.down3 = Down(256, 512)
