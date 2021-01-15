@@ -7,20 +7,17 @@ import logging
 import multiprocessing
 
 from pathlib import Path
-from torch.utils.data import DataLoader
 
-from segmlib import root_path
 from segmlib.unet import UNet
-from segmlib.biggan import make_big_gan
-from segmlib.dataset import MaskGeneratorDataset, SegmentationDataset
 from segmlib.model import SegmentationModel
-from segmlib.mask_generator import MaskGenerator
+from segmlib.biggan import make_big_gan
 
 
 os.environ['WANDB_SILENT'] = 'true'
 logging.getLogger("lightning").setLevel(logging.ERROR)
 warnings.filterwarnings('ignore')
 multiprocessing.set_start_method('spawn')
+root_path = Path(__file__).resolve().parents[1]
 
 
 parser = argparse.ArgumentParser(description='GAN-based unsupervised segmentation')
@@ -39,19 +36,8 @@ if run.config.seed is not None:
     pl.seed_everything(run.config.seed)
 
 gan = make_big_gan(run.config.weights).eval().cuda(run.config.gan_device)
-mask_generator = MaskGenerator(gan, gan.dim_z, run.config)
-
 backbone = UNet(in_channels=3, out_channels=2)
-test_sets_names = [Path(path).resolve().stem for path in run.config.test_datasets]
-
-train_set = MaskGeneratorDataset(mask_generator, length=run.config.train_samples)
-valid_set = MaskGeneratorDataset(mask_generator, length=run.config.valid_samples)
-test_sets = [SegmentationDataset(path, resolution=128, mask_type=name)
-             for name, path in zip(test_sets_names, run.config.test_datasets)]
-train_loader = DataLoader(train_set, batch_size=run.config.model_batch_size, num_workers=1)
-valid_loader = DataLoader(valid_set, batch_size=run.config.model_batch_size, num_workers=1)
-test_loaders = [DataLoader(test_set, batch_size=run.config.model_batch_size, num_workers=8)
-                for test_set in test_sets]
+model = SegmentationModel(run, gan, backbone, hparams=dict(run.config))
 
 trainer = pl.Trainer(
     logger=False,
@@ -61,11 +47,5 @@ trainer = pl.Trainer(
     weights_summary=None
 )
 
-model = SegmentationModel(run, backbone, hparams=dict(run.config))
-trainer.fit(model, train_loader, valid_loader)
-metrics = trainer.test(model, test_loaders, verbose=False)
-run.log({
-    f'{set_name}_{metric_name}': metric_value
-    for set_name, set_metrics in zip(test_sets_names, metrics)
-    for metric_name, metric_value in set_metrics.items()
-})
+trainer.fit(model)
+trainer.test(model, verbose=False)

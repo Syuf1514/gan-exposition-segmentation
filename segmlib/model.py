@@ -1,9 +1,16 @@
 import torch
 import pytorch_lightning as pl
 import numpy as np
+import itertools as tls
+import pandas as pd
 
+from pathlib import Path
 from wandb import Image
 from pytorch_lightning.metrics.functional import accuracy, iou, fbeta
+from torch.utils.data import DataLoader
+
+from segmlib.mask_generator import MaskGenerator
+from segmlib.dataset import MaskGeneratorDataset, SegmentationDataset
 
 
 class SegmentationModel(pl.LightningModule):
@@ -11,14 +18,18 @@ class SegmentationModel(pl.LightningModule):
         0: 'background',
         1: 'object'
     }
-    fmax_betas = np.linspace(0, 1, 11)
 
-    def __init__(self, run, backbone, hparams):
+    def __init__(self, run, gan, backbone, hparams):
         super().__init__()
         self.run = run
         self.backbone = backbone
         self.hparams = hparams
+
+        self.train_mask_generator = MaskGenerator(gan, gan.dim_z, run.config)
+        self.valid_mask_generator = MaskGenerator(gan, gan.dim_z, run.config)
+
         self.criterion = torch.nn.CrossEntropyLoss()
+        self.test_sets_names = [Path(path).resolve().stem for path in self.run.config.test_datasets]
         self.last_validation_batch = None
 
     def configure_optimizers(self):
@@ -62,11 +73,44 @@ class SegmentationModel(pl.LightningModule):
                 }
             }) for image, mask, mask_hat in zip(images, masks, masks_hat)]
         })
+        self.last_validation_batch = None
 
-    def test_step(self, batch, batch_idx, dataloader_idx=None):
+    def test_step(self, batch, batch_idx, dataloader_idx=0):
         images, masks = batch
-        masks_hat = self.backbone(images).argmax(dim=1)
-        for mask, mask_hat in zip(masks, masks_hat):
-            self.log('accuracy', accuracy(mask_hat, mask))
-            self.log('iou', iou(mask_hat, mask))
-            self.log('fbeta', fbeta(mask_hat, mask, len(self.class_labels), beta=self.hparams.fbeta_beta))
+        masks = masks.cpu()
+        masks_hat = self(images).cpu()
+        metrics_batch = [{
+                'acc': accuracy(mask_hat, mask).item(),
+                'iou': iou(mask_hat, mask).item(),
+                'fb': fbeta(mask_hat, mask, num_classes=len(self.class_labels),
+                            beta=self.hparams.fbeta_beta, average='none')[1].item()
+        } for mask_hat, mask in zip(masks_hat, masks)]
+        return metrics_batch
+
+    def test_epoch_end(self, outputs):
+        if len(self.test_sets_names) == 1:
+            outputs = [outputs]
+        for set_name, set_metrics_batches in zip(self.test_sets_names, outputs):
+            stats = pd.DataFrame(tls.chain(*set_metrics_batches)).describe().T[['count', 'mean', 'std']]
+            stats['std'] /= np.sqrt(stats['count'])
+            self.run.log({f'{set_name}_{metric_name}': mean_value
+                          for metric_name, mean_value in stats['mean'].iteritems()})
+            self.run.log({f'{set_name}_{metric_name}_std': std_value
+                          for metric_name, std_value in stats['std'].iteritems()})
+
+    def train_dataloader(self):
+        train_set = MaskGeneratorDataset(self.train_mask_generator, length=self.run.config.train_samples)
+        train_loader = DataLoader(train_set, batch_size=self.run.config.model_batch_size, num_workers=1)
+        return train_loader
+
+    def val_dataloader(self):
+        valid_set = MaskGeneratorDataset(self.valid_mask_generator, length=self.run.config.valid_samples)
+        valid_loader = DataLoader(valid_set, batch_size=self.run.config.model_batch_size, num_workers=1)
+        return valid_loader
+
+    def test_dataloader(self):
+        test_sets = [SegmentationDataset(set_path, resolution=128, mask_type=set_name)
+                     for set_name, set_path in zip(self.test_sets_names, self.run.config.test_datasets)]
+        test_loaders = [DataLoader(test_set, batch_size=self.run.config.model_batch_size, num_workers=8)
+                        for test_set in test_sets]
+        return test_loaders
