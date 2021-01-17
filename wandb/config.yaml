@@ -11,6 +11,9 @@ test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
     - data/flowers
+    - data/ECSS
+    - data/DUTS
+    - data/CUB
 
 connected_components:
   desc: whether to apply connected components filter or not
@@ -24,19 +27,19 @@ maxes_filter:
 
 z_noise:
   desc: amplitude of z noise
-  value: 0.0
+  value: 0.2
 z_shift:
   desc: norm of the shift along the latent direction
   value: 5.0
 mask_size_bound:
-  desc: upper bound of the mask size when rejecting a sample
+  desc: upper bound of the mask size to reject a sample
   value: 0.5
 components_area_bound:
   desc: connected component area lower bound with respect to the maximum component area in the mask
   value: 0.2
 fbeta_beta:
   desc: beta value for the F_beta metric
-  value: 0.3
+  value: 0.55
 learning_rate:
   desc: learning rate
   value: 0.001
@@ -47,6 +50,9 @@ steps_per_rate_decay:
   desc: steps per learning rate decay
   value: 8000
 
+gan_resolution:
+  desc: width and height of generated square images by GAN
+  value: 128
 model_batch_size:
   desc: the size of minibatches for the segmentation model
   value: 64
@@ -59,15 +65,12 @@ model_device:
 gan_device:
   desc: CUDA device to use for generating images with the GAN
   value: 1
-gan_max_retries:
-  desc: maximum value of retries for GAN to sample an image
-  value: 100
 train_samples:
   desc: number of samples to use on each epoch for training the model
-  value: 1000
+  value: 10000
 valid_samples:
   desc: number of samples to validate trained model on
-  value: 100
+  value: 1000
 seed:
   desc: random seed
   value: null

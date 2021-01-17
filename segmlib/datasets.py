@@ -25,8 +25,11 @@ class MaskGeneratorDataset(IterableDataset):
 
 
 class SegmentationDataset(Dataset):
-    def __init__(self, path, resolution, mask_type=None):
+    def __init__(self, path, resolution, mask_type='default'):
         self.path = Path(path).resolve()
+        if not self.path.is_dir():
+            raise RuntimeError(f'dataset path "{self.path}" is not a valid folder')
+
         self.resolution = resolution
         if mask_type == 'flowers':
             self._mask_processing = self._flowers_mask_processing

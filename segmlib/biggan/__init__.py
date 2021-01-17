@@ -1,2 +1,2 @@
-from .loading import make_big_gan, make_biggan_config
+from .loading import UnconditionalBigGAN, make_biggan_config
 from .BigGAN import Generator

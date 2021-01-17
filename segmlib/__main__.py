@@ -8,12 +8,10 @@ import multiprocessing
 
 from pathlib import Path
 
-from segmlib.unet import UNet
-from segmlib.model import SegmentationModel
-from segmlib.biggan import make_big_gan
+from segmlib import UnconditionalBigGAN, UNet, SegmentationModel
 
 
-os.environ['WANDB_SILENT'] = 'true'
+# os.environ['WANDB_SILENT'] = 'true'
 logging.getLogger("lightning").setLevel(logging.ERROR)
 warnings.filterwarnings('ignore')
 multiprocessing.set_start_method('spawn')
@@ -35,9 +33,9 @@ run.config.update(params, allow_val_change=True)
 if run.config.seed is not None:
     pl.seed_everything(run.config.seed)
 
-gan = make_big_gan(run.config.weights).eval().cuda(run.config.gan_device)
+gan = UnconditionalBigGAN.load(run.config.weights, run.config.gan_resolution, run.config.gan_device).eval()
 backbone = UNet(in_channels=3, out_channels=2)
-model = SegmentationModel(run, gan, backbone, hparams=dict(run.config))
+model = SegmentationModel(run, gan, backbone)
 
 trainer = pl.Trainer(
     logger=False,

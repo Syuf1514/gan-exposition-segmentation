@@ -9,8 +9,8 @@ from wandb import Image
 from pytorch_lightning.metrics.functional import accuracy, iou, fbeta
 from torch.utils.data import DataLoader
 
-from segmlib.mask_generator import MaskGenerator
-from segmlib.dataset import MaskGeneratorDataset, SegmentationDataset
+from .mask_generator import MaskGenerator
+from .datasets import MaskGeneratorDataset, SegmentationDataset
 
 
 class SegmentationModel(pl.LightningModule):
@@ -19,17 +19,18 @@ class SegmentationModel(pl.LightningModule):
         1: 'object'
     }
 
-    def __init__(self, run, gan, backbone, hparams):
+    def __init__(self, run, gan, backbone):
         super().__init__()
         self.run = run
         self.backbone = backbone
-        self.hparams = hparams
+        self.hparams = dict(run.config)
 
-        self.train_mask_generator = MaskGenerator(gan, gan.dim_z, run.config)
-        self.valid_mask_generator = MaskGenerator(gan, gan.dim_z, run.config)
+        self.direction = torch.load(self.hparams.direction)
+        self.train_mask_generator = MaskGenerator(gan, self.direction, self.hparams)
+        self.valid_mask_generator = MaskGenerator(gan, self.direction, self.hparams)
 
         self.criterion = torch.nn.CrossEntropyLoss()
-        self.test_sets_names = [Path(path).resolve().stem for path in self.run.config.test_datasets]
+        self.test_sets_names = [Path(path).resolve().stem for path in self.hparams.test_datasets]
         self.last_validation_batch = None
 
     def configure_optimizers(self):
@@ -49,15 +50,16 @@ class SegmentationModel(pl.LightningModule):
         images, masks = batch
         masks_hat = self.backbone(images)
         loss = self.criterion(masks_hat, masks)
-        self.run.log({'train_loss': loss})
+        self.run.log({'Training Loss': loss})
         return loss
 
     def validation_step(self, batch, batch_idx):
         images, masks = batch
         masks_hat = self.backbone(images)
         loss = self.criterion(masks_hat, masks)
-        self.run.log({'valid_loss': loss})
+        self.run.log({'Validation Loss': loss})
         self.last_validation_batch = images, masks, masks_hat
+        return loss
 
     def on_validation_epoch_end(self):
         images, masks, masks_hat = [tensor.cpu().numpy() for tensor in self.last_validation_batch]
@@ -87,10 +89,10 @@ class SegmentationModel(pl.LightningModule):
         } for mask_hat, mask in zip(masks_hat, masks)]
         return metrics_batch
 
-    def test_epoch_end(self, outputs):
+    def test_epoch_end(self, test_steps_outputs):
         if len(self.test_sets_names) == 1:
-            outputs = [outputs]
-        for set_name, set_metrics_batches in zip(self.test_sets_names, outputs):
+            test_steps_outputs = [test_steps_outputs]
+        for set_name, set_metrics_batches in zip(self.test_sets_names, test_steps_outputs):
             stats = pd.DataFrame(tls.chain(*set_metrics_batches)).describe().T[['count', 'mean', 'std']]
             stats['std'] /= np.sqrt(stats['count'])
             self.run.log({f'{set_name}_{metric_name}': mean_value
@@ -99,18 +101,18 @@ class SegmentationModel(pl.LightningModule):
                           for metric_name, std_value in stats['std'].iteritems()})
 
     def train_dataloader(self):
-        train_set = MaskGeneratorDataset(self.train_mask_generator, length=self.run.config.train_samples)
-        train_loader = DataLoader(train_set, batch_size=self.run.config.model_batch_size, num_workers=1)
+        train_set = MaskGeneratorDataset(self.train_mask_generator, length=self.hparams.train_samples)
+        train_loader = DataLoader(train_set, batch_size=self.hparams.model_batch_size, num_workers=1)
         return train_loader
 
     def val_dataloader(self):
-        valid_set = MaskGeneratorDataset(self.valid_mask_generator, length=self.run.config.valid_samples)
-        valid_loader = DataLoader(valid_set, batch_size=self.run.config.model_batch_size, num_workers=1)
+        valid_set = MaskGeneratorDataset(self.valid_mask_generator, length=self.hparams.valid_samples)
+        valid_loader = DataLoader(valid_set, batch_size=self.hparams.model_batch_size, num_workers=1)
         return valid_loader
 
     def test_dataloader(self):
-        test_sets = [SegmentationDataset(set_path, resolution=128, mask_type=set_name)
-                     for set_name, set_path in zip(self.test_sets_names, self.run.config.test_datasets)]
-        test_loaders = [DataLoader(test_set, batch_size=self.run.config.model_batch_size, num_workers=8)
+        test_sets = [SegmentationDataset(set_path, self.hparams.gan_resolution, mask_type=set_name)
+                     for set_name, set_path in zip(self.test_sets_names, self.hparams.test_datasets)]
+        test_loaders = [DataLoader(test_set, batch_size=self.hparams.model_batch_size, num_workers=8)
                         for test_set in test_sets]
         return test_loaders

@@ -4,32 +4,45 @@ import torch
 from skimage.measure import label
 from torch.nn.functional import conv1d
 
-from segmlib.utils import rgb2gray
+from .utils import rgb2gray
 
 
 class MaskGenerator:
-    def __init__(self, gan, z_dim, config):
+    def __init__(self, gan, direction, hparams):
         super().__init__()
         self.gan = gan
-        self.z_dim = z_dim
+        self.direction = direction
 
-        self.direction = torch.load(config.direction)
-        self.mask_size_bound = config.mask_size_bound
-        self.maxes_filter = config.maxes_filter
-        self.gan_batch_size = config.gan_batch_size
-        self.z_shift = config.z_shift
-        self.z_noise = config.z_noise
-        self.gan_max_retries = config.gan_max_retries
-        self.mask_size_filter = config.mask_size_filter
-        self.components_area_bound = config.components_area_bound
-        self.connected_components = config.connected_components
-        self.fbeta_beta = config.fbeta_beta
-        self.gan_device = config.gan_device
+        self.mask_size_bound = hparams.mask_size_bound
+        self.maxes_filter = hparams.maxes_filter
+        self.gan_batch_size = hparams.gan_batch_size
+        self.z_shift = hparams.z_shift
+        self.z_noise = hparams.z_noise
+        self.mask_size_filter = hparams.mask_size_filter
+        self.components_area_bound = hparams.components_area_bound
+        self.connected_components = hparams.connected_components
+        self.gan_device = hparams.gan_device
 
-        if config.embeddings is None:
-            self.embeddings = torch.zeros(1, z_dim)
+        if hparams.embeddings is None:
+            self.embeddings = torch.zeros(1, gan.dim_z)
         else:
-            self.embeddings = torch.load(config.embeddings)
+            self.embeddings = torch.load(hparams.embeddings)
+
+    def __call__(self):
+        z_idx = torch.randint(0, len(self.embeddings), (self.gan_batch_size,))
+        z_codes = self.embeddings[z_idx]
+        z_codes += self.z_noise * torch.randn_like(z_codes)
+        shifted_z_codes = z_codes + self.z_shift * self.direction
+        with torch.no_grad():
+            images = self.gan(z_codes.cuda(self.gan_device)).cpu()
+            images = self._normalize_gan_output(images)
+            shifted_images = self.gan(shifted_z_codes.cuda(self.gan_device)).cpu()
+            shifted_images = self._normalize_gan_output(shifted_images)
+        masks = self._extract_masks(images, shifted_images)
+        batch = [self._postprocessing(image, shifted_image, mask)
+                 for image, shifted_image, mask in zip(images, shifted_images, masks)
+                 if not self._reject_sample(image, shifted_image, mask)]
+        return batch
 
     def _extract_masks(self, images, shifted_images):
         gray_images = rgb2gray(images)
@@ -65,21 +78,6 @@ class MaskGenerator:
         if self.connected_components:
             mask = self._connected_components_postprocessing(mask)
         return image, mask
-
-    def __call__(self):
-        z_idx = torch.randint(0, len(self.embeddings), (self.gan_batch_size,))
-        z_codes = self.embeddings[z_idx] + self.z_noise * torch.randn(self.gan_batch_size, self.z_dim)
-        shifted_z_codes = z_codes + self.z_shift * self.direction
-        with torch.no_grad():
-            images = self.gan(z_codes.cuda(self.gan_device)).cpu()
-            images = self._normalize_gan_output(images)
-            shifted_images = self.gan(shifted_z_codes.cuda(self.gan_device)).cpu()
-            shifted_images = self._normalize_gan_output(shifted_images)
-        masks = self._extract_masks(images, shifted_images)
-        batch = [self._postprocessing(image, shifted_image, mask)
-                 for image, shifted_image, mask in zip(images, shifted_images, masks)
-                 if not self._reject_sample(image, shifted_image, mask)]
-        return batch
 
     @staticmethod
     def _normalize_gan_output(tensor):
