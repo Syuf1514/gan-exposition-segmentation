@@ -6,12 +6,12 @@ direction:
   value: weights/direction.pth
 embeddings:
   desc: dataset images embeddings path
-  value: embeddings/flowers.pth
+  value: data/flowers.pth
 test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
     - data/flowers
-    - data/ECSS
+    - data/ECSSD
     - data/DUTS
     - data/CUB
 
@@ -31,7 +31,10 @@ z_noise:
 z_shift:
   desc: norm of the shift along the latent direction
   value: 5.0
-mask_size_bound:
+mask_size_lower_bound:
+  desc: lower bound of the mask size to reject a sample
+  value: 0.1
+mask_size_upper_bound:
   desc: upper bound of the mask size to reject a sample
   value: 0.5
 components_area_bound:

@@ -11,7 +11,7 @@ from pathlib import Path
 from segmlib import UnconditionalBigGAN, UNet, SegmentationModel
 
 
-# os.environ['WANDB_SILENT'] = 'true'
+os.environ['WANDB_SILENT'] = 'true'
 logging.getLogger("lightning").setLevel(logging.ERROR)
 warnings.filterwarnings('ignore')
 multiprocessing.set_start_method('spawn')

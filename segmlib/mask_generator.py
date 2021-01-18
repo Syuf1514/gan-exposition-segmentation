@@ -13,7 +13,8 @@ class MaskGenerator:
         self.gan = gan
         self.direction = direction
 
-        self.mask_size_bound = hparams.mask_size_bound
+        self.mask_size_lower_bound = hparams.mask_size_lower_bound
+        self.mask_size_upper_bound = hparams.mask_size_upper_bound
         self.maxes_filter = hparams.maxes_filter
         self.gan_batch_size = hparams.gan_batch_size
         self.z_shift = hparams.z_shift
@@ -52,7 +53,7 @@ class MaskGenerator:
 
     def _reject_by_mask_size(self, mask):
         mask_size = mask.sum() / np.product(mask.shape)
-        return mask_size > self.mask_size_bound
+        return not (self.mask_size_lower_bound < mask_size < self.mask_size_upper_bound)
 
     def _reject_by_maxes(self, shifted_image):
         stats = torch.histc(shifted_image, bins=12, min=0, max=1)
@@ -69,7 +70,7 @@ class MaskGenerator:
     def _connected_components_postprocessing(self, mask):
         labels = label(mask)
         areas = np.bincount(labels.flatten()) / np.product(labels.shape)
-        max_label_area = np.max(areas[1:])
+        max_label_area = np.max(areas[1:], initial=0.0)
         noise_labels = np.where(areas < self.components_area_bound * max_label_area)[0]
         processed_mask = np.where(np.isin(labels, noise_labels), 0, mask)
         return torch.from_numpy(processed_mask)
