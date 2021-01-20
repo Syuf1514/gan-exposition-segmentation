@@ -8,7 +8,7 @@ import multiprocessing
 
 from pathlib import Path
 
-from segmlib import UnconditionalBigGAN, UNet, SegmentationModel
+from segmlib import UnconditionalBigGAN, UNet, SegmentationModel, AffineMaskGenerator
 
 
 os.environ['WANDB_SILENT'] = 'true'
@@ -34,8 +34,9 @@ if run.config.seed is not None:
     pl.seed_everything(run.config.seed)
 
 gan = UnconditionalBigGAN.load(run.config.weights, run.config.gan_resolution, run.config.gan_device).eval()
-backbone = UNet(in_channels=3, out_channels=2)
-model = SegmentationModel(run, gan, backbone)
+mask_generator = AffineMaskGenerator(run.config.n_classes, run.config.sigma)
+backbone = UNet(in_channels=3, out_channels=run.config.n_classes)
+model = SegmentationModel(run, gan, mask_generator, backbone)
 
 trainer = pl.Trainer(
     logger=False,

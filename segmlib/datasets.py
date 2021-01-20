@@ -7,17 +7,17 @@ from PIL import Image
 from pathlib import Path
 
 
-class MaskGeneratorDataset(IterableDataset):
-    def __init__(self, mask_generator, length):
+class ImagesDataset(IterableDataset):
+    def __init__(self, images_generator, length):
         super().__init__()
-        self.mask_generator = mask_generator
+        self.images_generator = images_generator
         self.length = length
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
         if (worker_info is not None) and (worker_info.num_workers > 1):
             raise RuntimeError('single process data loading is recommended')
-        iterator = tls.islice(tls.chain.from_iterable(self.mask_generator() for _ in tls.count()), self.length)
+        iterator = tls.islice(tls.chain.from_iterable(self.images_generator() for _ in tls.count()), self.length)
         return iterator
 
     def __len__(self):
