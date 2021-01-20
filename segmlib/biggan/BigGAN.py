@@ -115,12 +115,12 @@ class Generator(nn.Module):
     # Which convs, batchnorms, and linear layers to use
     if self.G_param == 'SN':
       self.which_conv = functools.partial(layers.SNConv2d,
-                          kernel_size=3, padding=1,
-                          num_svs=num_G_SVs, num_itrs=num_G_SV_itrs,
-                          eps=self.SN_eps)
+                                          kernel_size=3, padding=1,
+                                          num_svs=num_G_SVs, num_itrs=num_G_SV_itrs,
+                                          eps=self.SN_eps)
       self.which_linear = functools.partial(layers.SNLinear,
-                          num_svs=num_G_SVs, num_itrs=num_G_SV_itrs,
-                          eps=self.SN_eps)
+                                            num_svs=num_G_SVs, num_itrs=num_G_SV_itrs,
+                                            eps=self.SN_eps)
     else:
       self.which_conv = functools.partial(nn.Conv2d, kernel_size=3, padding=1)
       self.which_linear = nn.Linear
@@ -131,13 +131,13 @@ class Generator(nn.Module):
     bn_linear = (functools.partial(self.which_linear, bias=False) if self.G_shared
                  else self.which_embedding)
     self.which_bn = functools.partial(layers.ccbn,
-                          which_linear=bn_linear,
-                          cross_replica=self.cross_replica,
-                          mybn=self.mybn,
-                          input_size=(self.shared_dim + self.z_chunk_size if self.G_shared
+                                      which_linear=bn_linear,
+                                      cross_replica=self.cross_replica,
+                                      mybn=self.mybn,
+                                      input_size=(self.shared_dim + self.z_chunk_size if self.G_shared
                                       else self.n_classes),
-                          norm_style=self.norm_style,
-                          eps=self.BN_eps)
+                                      norm_style=self.norm_style,
+                                      eps=self.BN_eps)
 
 
     # Prepare model
@@ -154,11 +154,11 @@ class Generator(nn.Module):
     self.blocks = []
     for index in range(len(self.arch['out_channels'])):
       self.blocks += [[layers.GBlock(in_channels=self.arch['in_channels'][index],
-                             out_channels=self.arch['out_channels'][index],
-                             which_conv=self.which_conv,
-                             which_bn=self.which_bn,
-                             activation=self.activation,
-                             upsample=(functools.partial(F.interpolate, scale_factor=2)
+                                     out_channels=self.arch['out_channels'][index],
+                                     which_conv=self.which_conv,
+                                     which_bn=self.which_bn,
+                                     activation=self.activation,
+                                     upsample=(functools.partial(F.interpolate, scale_factor=2)
                                        if self.arch['upsample'][index] else None))]]
 
       # If attention on this block, attach it to the end
@@ -174,8 +174,8 @@ class Generator(nn.Module):
     self.output_layer = nn.Sequential(layers.bn(self.arch['out_channels'][-1],
                                                 cross_replica=self.cross_replica,
                                                 mybn=self.mybn),
-                                    self.activation,
-                                    self.which_conv(self.arch['out_channels'][-1], 3))
+                                      self.activation,
+                                      self.which_conv(self.arch['out_channels'][-1], 3))
 
     # Initialize weights. Optionally skip init for testing.
     if not skip_init:
@@ -319,27 +319,27 @@ class Discriminator(nn.Module):
     # No option to turn off SN in D right now
     if self.D_param == 'SN':
       self.which_conv = functools.partial(layers.SNConv2d,
-                          kernel_size=3, padding=1,
-                          num_svs=num_D_SVs, num_itrs=num_D_SV_itrs,
-                          eps=self.SN_eps)
+                                          kernel_size=3, padding=1,
+                                          num_svs=num_D_SVs, num_itrs=num_D_SV_itrs,
+                                          eps=self.SN_eps)
       self.which_linear = functools.partial(layers.SNLinear,
-                          num_svs=num_D_SVs, num_itrs=num_D_SV_itrs,
-                          eps=self.SN_eps)
+                                            num_svs=num_D_SVs, num_itrs=num_D_SV_itrs,
+                                            eps=self.SN_eps)
       self.which_embedding = functools.partial(layers.SNEmbedding,
-                              num_svs=num_D_SVs, num_itrs=num_D_SV_itrs,
-                              eps=self.SN_eps)
+                                               num_svs=num_D_SVs, num_itrs=num_D_SV_itrs,
+                                               eps=self.SN_eps)
     # Prepare model
     # self.blocks is a doubly-nested list of modules, the outer loop intended
     # to be over blocks at a given resolution (resblocks and/or self-attention)
     self.blocks = []
     for index in range(len(self.arch['out_channels'])):
       self.blocks += [[layers.DBlock(in_channels=self.arch['in_channels'][index],
-                       out_channels=self.arch['out_channels'][index],
-                       which_conv=self.which_conv,
-                       wide=self.D_wide,
-                       activation=self.activation,
-                       preactivation=(index > 0),
-                       downsample=(nn.AvgPool2d(2) if self.arch['downsample'][index] else None))]]
+                                     out_channels=self.arch['out_channels'][index],
+                                     which_conv=self.which_conv,
+                                     wide=self.D_wide,
+                                     activation=self.activation,
+                                     preactivation=(index > 0),
+                                     downsample=(nn.AvgPool2d(2) if self.arch['downsample'][index] else None))]]
       # If attention on this block, attach it to the end
       if self.arch['attention'][self.arch['resolution'][index]]:
         print('Adding attention layer in D at resolution %d' % self.arch['resolution'][index])

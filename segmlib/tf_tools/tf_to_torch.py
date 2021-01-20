@@ -18,8 +18,8 @@ import tensorflow as tf
 import parse
 
 from . import proxy_biggan
-from segmlib.biggan.model.BigGAN import Generator
-from segmlib.biggan.gan_load import make_biggan_config
+from segmlib.biggan import Generator
+from segmlib.biggan import make_biggan_config
 
 import io
 DEVICE = 'cuda'
