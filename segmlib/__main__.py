@@ -8,7 +8,7 @@ import multiprocessing
 
 from pathlib import Path
 
-from segmlib import UnconditionalBigGAN, UNet, SegmentationModel, AffineMaskGenerator
+from segmlib import UnconditionalBigGAN, UNet, SegmentationModel, create_mask_generator
 
 
 os.environ['WANDB_SILENT'] = 'true'
@@ -19,7 +19,7 @@ root_path = Path(__file__).resolve().parents[1]
 
 
 parser = argparse.ArgumentParser(description='GAN-based unsupervised segmentation')
-parser.add_argument('--wandb', default='online', help='wandb mode, one of [online, offline, disabled]')
+parser.add_argument('--wandb', default='online', help='wandb mode [online/offline/disabled]')
 parser.add_argument('--config', default='wandb/config.yaml', help='path to a file with default hyperparameters')
 run_args, other_args = parser.parse_known_args()
 
@@ -34,7 +34,7 @@ if run.config.seed is not None:
     pl.seed_everything(run.config.seed)
 
 gan = UnconditionalBigGAN.load(run.config.weights, run.config.gan_resolution, run.config.gan_device).eval()
-mask_generator = AffineMaskGenerator(run.config.n_classes, run.config.sigma)
+mask_generator = create_mask_generator(run.config)
 backbone = UNet(in_channels=3, out_channels=run.config.n_classes)
 model = SegmentationModel(run, gan, mask_generator, backbone)
 

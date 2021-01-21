@@ -15,50 +15,34 @@ test_datasets:
     - data/DUTS
     - data/ECSSD
 
-connected_components:
-  desc: whether to apply connected components filter or not
-  value: true
-mask_size_filter:
-  desc: whether to apply mask size filter to generated samples or not
-  value: true
-maxes_filter:
-  desc: whether to apply maxes filter to generated samples or not
-  value: true
-
 n_classes:
   desc: number of the segmentation classes
   value: 2
+mask_generator:
+  desc: type of mask generator for training [scalar/affine]
+  value: scalar
 sigma:
-  desc: standard deviation in the shifted color distribution
+  desc: standard deviation in the shifted color distribution for the mask generator
   value: 1.0
+train_mask:
+  desc: whether to train fixed mask parameters or not
+  value: true
 z_noise:
   desc: amplitude of z noise
-  value: 0.0
+  value: 0.1
 z_shift:
   desc: norm of the shift along the latent direction
   value: 5.0
-mask_size_lower_bound:
-  desc: lower bound of the mask size to reject a sample
-  value: 0.1
-mask_size_upper_bound:
-  desc: upper bound of the mask size to reject a sample
-  value: 0.5
-components_area_bound:
-  desc: connected component area lower bound with respect to the maximum component area in the mask
-  value: 0.2
 fbeta_beta:
   desc: beta value for the F_beta metric
   value: 0.55
 learning_rate:
   desc: learning rate
   value: 0.001
-rate_decay:
-  desc: learning rate decay
-  value: 0.2
-steps_per_rate_decay:
-  desc: steps per learning rate decay
-  value: 8000
 
+epochs:
+  desc: number of epochs to train the model
+  value: 5
 gan_resolution:
   desc: width and height of generated square images by GAN
   value: 128
@@ -83,6 +67,3 @@ valid_samples:
 seed:
   desc: random seed
   value: null
-epochs:
-  desc: number of epochs to train the model
-  value: 5
