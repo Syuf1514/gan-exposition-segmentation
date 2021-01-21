@@ -21,6 +21,9 @@ class SegmentationModel(pl.LightningModule):
         self.backbone = backbone
         self.hparams = dict(run.config)
 
+        classes_priors = torch.log(torch.Tensor(self.hparams.classes_priors))
+        self.register_parameter('classes_priors', torch.nn.Parameter(classes_priors, requires_grad=False))
+
         self.direction = torch.load(self.hparams.direction)
         self.train_images_generator = ImagesGenerator(gan, self.direction, self.hparams)
         self.valid_images_generator = ImagesGenerator(gan, self.direction, self.hparams)
@@ -42,10 +45,13 @@ class SegmentationModel(pl.LightningModule):
     def step(self, batch):
         images, shifted_images = batch
         generated_masks = self.mask_generator(batch)
+
         predicted_masks = self.backbone(images)
+        # predicted_const = torch.logsumexp(predicted_masks, dim=1)
+        # predicted_masks -= predicted_const.unsqueeze(dim=1).repeat_interleave(self.hparams.n_classes, dim=1)
+
         reference_masks = generated_masks + predicted_masks
-        loss = torch.logsumexp(generated_masks, dim=1).mean() + \
-               torch.logsumexp(predicted_masks, dim=1).mean() - \
+        loss = torch.logsumexp(predicted_masks, dim=1).mean() - \
                torch.logsumexp(reference_masks, dim=1).mean()
         return loss, (images, generated_masks, predicted_masks, reference_masks)
 
@@ -69,9 +75,10 @@ class SegmentationModel(pl.LightningModule):
             }) for image, generated_mask, predicted_mask, reference_mask in
             zip(images, generated_masks, predicted_masks, reference_masks)]
         })
-        state_dict_copy = {param_name: param_value.cpu().numpy()
-                           for param_name, param_value in self.mask_generator.state_dict().items()}
-        self.run.log({'Operators': state_dict_copy})
+        self.run.log({
+            'Operators': self._cpu_params(self.mask_generator),
+            'Classes Priors': np.exp(self.classes_priors.cpu().numpy())
+        })
         self.last_validation_batch = None
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):
@@ -122,8 +129,15 @@ class SegmentationModel(pl.LightningModule):
         metrics = [accuracy(self._permute_labels(masks_hat, permutation), masks) for permutation in permutations]
         return permutations[np.argmax(metrics)]
 
-    def _permute_labels(self, tensor, permutation):
+    @staticmethod
+    def _permute_labels(tensor, permutation):
         result = torch.zeros_like(tensor)
         for old_label, new_label in enumerate(permutation):
             result[tensor == old_label] = new_label
         return result
+
+    @staticmethod
+    def _cpu_params(module):
+        state_dict_copy = {param_name: param_value.cpu().numpy()
+                           for param_name, param_value in module.state_dict().items()}
+        return state_dict_copy

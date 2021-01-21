@@ -36,7 +36,8 @@ class AffineMaskGenerator(nn.Module):
     def __init__(self, n_classes, sigma, train_sigma):
         super().__init__()
         self.n_classes = n_classes
-        self.register_parameter('sigma', nn.Parameter(torch.tensor(sigma), requires_grad=train_sigma))
+        log_sigma = torch.log(torch.tensor(sigma))
+        self.register_parameter('log_sigma', nn.Parameter(log_sigma, requires_grad=train_sigma))
         self.operators = nn.ModuleList([nn.Linear(rgb_channels, rgb_channels) for _ in range(n_classes)])
 
     def forward(self, batch):
@@ -48,4 +49,5 @@ class AffineMaskGenerator(nn.Module):
         return log_masks
 
     def criterion(self, colors_hat, colors):
-        return -torch.sum((colors_hat - colors)**2, dim=-1) / (2 * self.sigma**2)
+        color_dists = torch.sum((colors_hat - colors)**2, dim=-1)
+        return -color_dists / (2 * torch.exp(2 * self.log_sigma)) - rgb_channels * self.log_sigma

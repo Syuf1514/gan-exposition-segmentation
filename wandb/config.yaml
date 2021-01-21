@@ -10,8 +10,8 @@ embeddings:
 test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
-    - data/flowers
     - data/CUB
+    - data/flowers
     - data/DUTS
     - data/ECSSD
 
@@ -20,7 +20,7 @@ n_classes:
   value: 2
 mask_generator:
   desc: type of mask generator for training [scalar/affine]
-  value: scalar
+  value: affine
 sigma:
   desc: standard deviation in the shifted color distribution for the mask generator
   value: 1.0
@@ -39,6 +39,11 @@ fbeta_beta:
 learning_rate:
   desc: learning rate
   value: 0.001
+classes_priors:
+  desc: prior probabilities of the segmentation classes
+  value:
+    - 0.6
+    - 0.4
 
 epochs:
   desc: number of epochs to train the model
