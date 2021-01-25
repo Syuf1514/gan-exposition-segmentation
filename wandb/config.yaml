@@ -6,7 +6,7 @@ direction:
   value: weights/direction.pth
 embeddings:
   desc: dataset images embeddings path
-  value: embeddings/cub.pth
+  value: embeddings/imagenet.pth
 test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
@@ -19,7 +19,7 @@ n_classes:
   desc: number of the segmentation classes
   value: 2
 mask_generator:
-  desc: type of mask generator for training [scalar/affine]
+  desc: type of mask generator for training [scalar/affine/beta]
   value: affine
 sigma:
   desc: standard deviation in the shifted color distribution for the mask generator
@@ -36,18 +36,24 @@ z_shift:
 fbeta_beta:
   desc: beta value for the F_beta metric
   value: 0.55
-learning_rate:
-  desc: learning rate
+backbone_lr:
+  desc: backbone learning rate
   value: 0.001
+mask_generator_lr:
+  desc: mask generator learning rate
+  value: 0.0001
 classes_priors:
   desc: prior probabilities of the segmentation classes
   value:
     - 0.6
     - 0.4
+epsilon:
+  desc: clamp epsilon for colors beta distribution
+  value: 0.01
 
 epochs:
   desc: number of epochs to train the model
-  value: 5
+  value: 100
 gan_resolution:
   desc: width and height of generated square images by GAN
   value: 128

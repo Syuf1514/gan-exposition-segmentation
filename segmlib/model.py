@@ -33,8 +33,10 @@ class SegmentationModel(pl.LightningModule):
         self.labels_permutation = None
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), self.hparams.learning_rate)
-        return optimizer
+        return torch.optim.Adam([
+            {'params': self.backbone.parameters(), 'lr': self.hparams.backbone_lr},
+            {'params': self.mask_generator.parameters(), 'lr': self.hparams.mask_generator_lr}
+        ])
 
     def forward(self, images):
         masks = self.backbone(images).argmax(dim=1)
@@ -45,11 +47,7 @@ class SegmentationModel(pl.LightningModule):
     def step(self, batch):
         images, shifted_images = batch
         generated_masks = self.mask_generator(batch)
-
         predicted_masks = self.backbone(images)
-        # predicted_const = torch.logsumexp(predicted_masks, dim=1)
-        # predicted_masks -= predicted_const.unsqueeze(dim=1).repeat_interleave(self.hparams.n_classes, dim=1)
-
         reference_masks = generated_masks + predicted_masks
         loss = torch.logsumexp(predicted_masks, dim=1).mean() - \
                torch.logsumexp(reference_masks, dim=1).mean()
@@ -77,7 +75,7 @@ class SegmentationModel(pl.LightningModule):
         })
         self.run.log({
             'Operators': self._cpu_params(self.mask_generator),
-            'Classes Priors': np.exp(self.classes_priors.cpu().numpy())
+            # 'Classes Priors': np.exp(self.classes_priors.cpu().numpy())
         })
         self.last_validation_batch = None
 
