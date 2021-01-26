@@ -2,20 +2,19 @@ import torch
 
 
 class ImagesGenerator:
-    def __init__(self, gan, direction, hparams):
+    def __init__(self, gan, embeddings, hparams):
         super().__init__()
         self.gan = gan
-        self.direction = direction
+        if embeddings is None:
+            self.embeddings = torch.zeros(1, gan.dim_z)
+        else:
+            self.embeddings = torch.load(embeddings)
 
+        self.direction = torch.load(hparams.direction)
         self.gan_device = hparams.gan_device
         self.gan_batch_size = hparams.gan_batch_size
         self.z_shift = hparams.z_shift
         self.z_noise = hparams.z_noise
-
-        if hparams.embeddings is None:
-            self.embeddings = torch.zeros(1, gan.dim_z)
-        else:
-            self.embeddings = torch.load(hparams.embeddings)
 
     def __call__(self):
         z_idx = torch.randint(0, len(self.embeddings), (self.gan_batch_size,))
@@ -31,5 +30,5 @@ class ImagesGenerator:
         return batch
 
     @staticmethod
-    def _normalize_gan_output(tensor):
-        return 0.5 * tensor + 0.5
+    def _normalize_gan_output(images):
+        return 0.5 * images + 0.5

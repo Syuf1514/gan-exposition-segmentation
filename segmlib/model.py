@@ -6,11 +6,11 @@ import pandas as pd
 
 from pathlib import Path
 from wandb import Image
-from pytorch_lightning.metrics.functional import accuracy, iou, fbeta
 from torch.utils.data import DataLoader
 
 from .images_generator import ImagesGenerator
 from .datasets import ImagesDataset, SegmentationDataset
+from .metrics import accuracy, binary_iou, binary_fbeta
 
 
 class SegmentationModel(pl.LightningModule):
@@ -21,12 +21,8 @@ class SegmentationModel(pl.LightningModule):
         self.backbone = backbone
         self.hparams = dict(run.config)
 
-        classes_priors = torch.log(torch.Tensor(self.hparams.classes_priors))
-        self.register_parameter('classes_priors', torch.nn.Parameter(classes_priors, requires_grad=False))
-
-        self.direction = torch.load(self.hparams.direction)
-        self.train_images_generator = ImagesGenerator(gan, self.direction, self.hparams)
-        self.valid_images_generator = ImagesGenerator(gan, self.direction, self.hparams)
+        self.train_images_generator = ImagesGenerator(gan, self.hparams.train_embeddings, self.hparams)
+        self.valid_images_generator = ImagesGenerator(gan, self.hparams.valid_embeddings, self.hparams)
 
         self.test_sets_names = [Path(path).resolve().stem for path in self.hparams.test_datasets]
         self.last_validation_batch = None
@@ -73,10 +69,7 @@ class SegmentationModel(pl.LightningModule):
             }) for image, generated_mask, predicted_mask, reference_mask in
             zip(images, generated_masks, predicted_masks, reference_masks)]
         })
-        self.run.log({
-            'Operators': self._cpu_params(self.mask_generator),
-            # 'Classes Priors': np.exp(self.classes_priors.cpu().numpy())
-        })
+        self.run.log({'Operators': self._cpu_params(self.mask_generator)})
         self.last_validation_batch = None
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):
@@ -87,10 +80,9 @@ class SegmentationModel(pl.LightningModule):
             self.labels_permutation = self._optimize_permutation(masks_hat, masks)
             masks_hat = self._permute_labels(masks_hat, self.labels_permutation)
         metrics_batch = [{
-                'acc': accuracy(mask_hat, mask, num_classes=self.hparams.n_classes, class_reduction='micro').item(),
-                'iou': iou(mask_hat, mask, num_classes=self.hparams.n_classes, reduction='none')[1].item(),
-                'fb': fbeta(mask_hat, mask, num_classes=self.hparams.n_classes,
-                            beta=self.hparams.fbeta_beta, average='none')[1].item()
+                'acc': accuracy(mask_hat, mask),
+                'iou': binary_iou(mask_hat, mask),
+                'fb': binary_fbeta(mask_hat, mask, self.hparams.fbeta_beta)
         } for mask_hat, mask in zip(masks_hat, masks)]
         return metrics_batch
 

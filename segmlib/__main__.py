@@ -9,7 +9,7 @@ import torch
 
 from pathlib import Path
 
-from segmlib import UnconditionalBigGAN, UNet, SegmentationModel, create_mask_generator
+from segmlib import UnconditionalBigGAN, UNet, SegmentationModel, AffineMaskGenerator
 
 
 os.environ['WANDB_SILENT'] = 'true'
@@ -21,8 +21,8 @@ root_path = Path(__file__).resolve().parents[1]
 
 parser = argparse.ArgumentParser(description='GAN-based unsupervised segmentation')
 parser.add_argument('--wandb', default='online', help='wandb mode [online/offline/disabled]')
-parser.add_argument('--config', default='wandb/config.yaml', help='path to a file with default hyperparameters')
 parser.add_argument('--name', default=None, help='wandb run name')
+parser.add_argument('--config', default='wandb/config.yaml', help='path to a file with default hyperparameters')
 run_args, other_args = parser.parse_known_args()
 
 run = wandb.init(project='gan-exposition-segmentation', dir=root_path, name=run_args.name,
@@ -37,7 +37,7 @@ if run.config.seed is not None:
     pl.seed_everything(run.config.seed)
 
 gan = UnconditionalBigGAN.load(run.config.gan_weights, run.config.gan_resolution, run.config.gan_device).eval()
-mask_generator = create_mask_generator(run.config)
+mask_generator = AffineMaskGenerator(run.config.n_classes)
 backbone = UNet(in_channels=3, out_channels=run.config.n_classes)
 if run.config.backbone_weights is not None:
     backbone.load_state_dict(torch.load(run.config.backbone_weights))
