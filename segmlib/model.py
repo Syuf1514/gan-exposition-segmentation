@@ -87,8 +87,8 @@ class SegmentationModel(pl.LightningModule):
             self.labels_permutation = self._optimize_permutation(masks_hat, masks)
             masks_hat = self._permute_labels(masks_hat, self.labels_permutation)
         metrics_batch = [{
-                'acc': accuracy(mask_hat, mask).item(),
-                'iou': iou(mask_hat, mask).item(),
+                'acc': accuracy(mask_hat, mask, num_classes=self.hparams.n_classes, class_reduction='micro').item(),
+                'iou': iou(mask_hat, mask, num_classes=self.hparams.n_classes, reduction='none')[1].item(),
                 'fb': fbeta(mask_hat, mask, num_classes=self.hparams.n_classes,
                             beta=self.hparams.fbeta_beta, average='none')[1].item()
         } for mask_hat, mask in zip(masks_hat, masks)]

@@ -5,6 +5,7 @@ import os
 import warnings
 import logging
 import multiprocessing
+import torch
 
 from pathlib import Path
 
@@ -21,9 +22,11 @@ root_path = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description='GAN-based unsupervised segmentation')
 parser.add_argument('--wandb', default='online', help='wandb mode [online/offline/disabled]')
 parser.add_argument('--config', default='wandb/config.yaml', help='path to a file with default hyperparameters')
+parser.add_argument('--name', default=None, help='wandb run name')
 run_args, other_args = parser.parse_known_args()
 
-run = wandb.init(project='gan-exposition-segmentation', dir=root_path, mode=run_args.wandb, config=run_args.config)
+run = wandb.init(project='gan-exposition-segmentation', dir=root_path, name=run_args.name,
+                 mode=run_args.wandb, config=run_args.config)
 parser = argparse.ArgumentParser()
 for arg_name, arg_default in run.config.items():
     parser.add_argument(f'--{arg_name}', type=type(arg_default), default=arg_default)
@@ -33,9 +36,11 @@ run.config.update(params, allow_val_change=True)
 if run.config.seed is not None:
     pl.seed_everything(run.config.seed)
 
-gan = UnconditionalBigGAN.load(run.config.weights, run.config.gan_resolution, run.config.gan_device).eval()
+gan = UnconditionalBigGAN.load(run.config.gan_weights, run.config.gan_resolution, run.config.gan_device).eval()
 mask_generator = create_mask_generator(run.config)
 backbone = UNet(in_channels=3, out_channels=run.config.n_classes)
+if run.config.backbone_weights is not None:
+    backbone.load_state_dict(torch.load(run.config.backbone_weights))
 model = SegmentationModel(run, gan, mask_generator, backbone)
 
 trainer = pl.Trainer(
@@ -46,5 +51,6 @@ trainer = pl.Trainer(
     weights_summary=None
 )
 
-trainer.fit(model)
+if run.config.train:
+    trainer.fit(model)
 trainer.test(model, verbose=False)

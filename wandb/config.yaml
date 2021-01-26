@@ -1,12 +1,15 @@
-weights:
+gan_weights:
   desc: GAN weights path
   value: weights/bigbigan.pth
+backbone_weights:
+  desc: backbone weights path if want to load
+  value: weights/unet_flowers.pth
 direction:
   desc: latent direction weights path
   value: weights/direction.pth
 embeddings:
   desc: dataset images embeddings path
-  value: embeddings/imagenet.pth
+  value: embeddings/cub.pth
 test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
@@ -14,6 +17,7 @@ test_datasets:
     - data/flowers
     - data/DUTS
     - data/ECSSD
+    - data/OMRON
 
 n_classes:
   desc: number of the segmentation classes
@@ -51,9 +55,12 @@ epsilon:
   desc: clamp epsilon for colors beta distribution
   value: 0.01
 
+train:
+  desc: whether to train the model
+  value: false
 epochs:
   desc: number of epochs to train the model
-  value: 100
+  value: 10
 gan_resolution:
   desc: width and height of generated square images by GAN
   value: 128
@@ -71,7 +78,7 @@ gan_device:
   value: 1
 train_samples:
   desc: number of samples to use on each epoch for training the model
-  value: 10000
+  value: 100000
 valid_samples:
   desc: number of samples to validate trained model on
   value: 1000
