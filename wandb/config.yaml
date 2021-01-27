@@ -18,10 +18,13 @@ test_datasets:
   value:
     - data/CUB
     - data/flowers
-    - data/DUTS
     - data/ECSSD
+    - data/DUTS
     - data/OMRON
 
+mask_generator:
+  desc: name of the mask generator to use for training
+  value: grayscale
 n_classes:
   desc: number of the segmentation classes
   value: 2
