@@ -25,14 +25,19 @@ class SegmentationModel(pl.LightningModule):
         self.valid_images_generator = ImagesGenerator(gan, self.hparams.valid_embeddings, self.hparams)
 
         self.test_sets_names = [Path(path).resolve().stem for path in self.hparams.test_datasets]
-        self.last_validation_batch = None
+        self.validation_batch = None
         self.labels_permutation = None
 
     def configure_optimizers(self):
-        return torch.optim.Adam([
+        optimizer = torch.optim.Adam([
             {'params': self.backbone.parameters(), 'lr': self.hparams.backbone_lr},
             {'params': self.mask_generator.parameters(), 'lr': self.hparams.mask_generator_lr}
         ])
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=[
+            lambda epoch: 10.0 if epoch == 0 else self.hparams.lr_decay ** (epoch - 1),
+            lambda epoch: 0.0 if epoch == 0 else self.hparams.lr_decay ** (epoch - 1)
+        ])
+        return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
     def forward(self, images):
         masks = self.backbone(images).argmax(dim=1)
@@ -50,17 +55,21 @@ class SegmentationModel(pl.LightningModule):
         return loss, (images, generated_masks, predicted_masks, reference_masks)
 
     def training_step(self, batch, batch_idx):
-        loss, _ = self.step(batch)
-        self.run.log({'Training Loss': loss})
+        loss, (images, generated_masks, predicted_masks, reference_masks) = self.step(batch)
+        self.run.log({'Training Loss': loss}, commit=False)
+        classes_priors = predicted_masks.detach().softmax(dim=1).mean(dim=(0, 2, 3)).cpu()
+        self.run.log({f'class_{k} prior': prior.item() for k, prior in enumerate(classes_priors)})
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, self.last_validation_batch = self.step(batch)
+        loss, last_batch = self.step(batch)
+        if self.validation_batch is None:
+            self.validation_batch = last_batch
         self.run.log({'Validation Loss': loss})
 
     def on_validation_epoch_end(self):
         images, generated_masks, predicted_masks, reference_masks = \
-            [tensor.cpu().numpy() for tensor in self.last_validation_batch]
+            [tensor.cpu().numpy() for tensor in self.validation_batch]
         self.run.log({'Last Batch Segmentation': [
             Image(image.transpose(1, 2, 0), masks={
                 'generated': {'mask_data': generated_mask.argmax(axis=0)},
@@ -70,7 +79,7 @@ class SegmentationModel(pl.LightningModule):
             zip(images, generated_masks, predicted_masks, reference_masks)]
         })
         self.run.log({'Operators': self._cpu_params(self.mask_generator)})
-        self.last_validation_batch = None
+        self.validation_batch = None
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):
         images, masks = batch

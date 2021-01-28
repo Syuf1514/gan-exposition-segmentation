@@ -24,7 +24,7 @@ test_datasets:
 
 mask_generator:
   desc: name of the mask generator to use for training
-  value: grayscale
+  value: affine
 n_classes:
   desc: number of the segmentation classes
   value: 2
@@ -42,14 +42,17 @@ backbone_lr:
   value: 0.001
 mask_generator_lr:
   desc: mask generator learning rate
-  value: 0.0001
+  value: 0.001
+lr_decay:
+  desc: factor which learning rates are multiplied by after every epoch
+  value: 0.9
 
 train:
-  desc: whether to train the model
+  desc: whether to train the model or not
   value: true
 epochs:
   desc: number of epochs to train the model
-  value: 1
+  value: 10
 gan_resolution:
   desc: width and height of generated square images by GAN
   value: 128
@@ -67,10 +70,10 @@ gan_device:
   value: 1
 train_samples:
   desc: number of samples to use on each epoch for training the model
-  value: 100000
+  value: 25000
 valid_samples:
   desc: number of samples to validate trained model on
-  value: 10000
+  value: 2500
 seed:
   desc: random seed
   value: null
