@@ -45,14 +45,14 @@ mask_generator_lr:
   value: 0.001
 lr_decay:
   desc: factor which learning rates are multiplied by after every epoch
-  value: 0.9
+  value: 0.8
 
 train:
   desc: whether to train the model or not
   value: true
 epochs:
   desc: number of epochs to train the model
-  value: 10
+  value: 5
 gan_resolution:
   desc: width and height of generated square images by GAN
   value: 128

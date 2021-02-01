@@ -34,8 +34,8 @@ class SegmentationModel(pl.LightningModule):
             {'params': self.mask_generator.parameters(), 'lr': self.hparams.mask_generator_lr}
         ])
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=[
-            lambda epoch: 10.0 if epoch == 0 else self.hparams.lr_decay ** (epoch - 1),
-            lambda epoch: 0.0 if epoch == 0 else self.hparams.lr_decay ** (epoch - 1)
+            lambda epoch: self.hparams.lr_decay ** epoch,
+            lambda epoch: self.hparams.lr_decay ** epoch
         ])
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
