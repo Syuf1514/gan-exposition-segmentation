@@ -78,7 +78,7 @@ class SegmentationModel(pl.LightningModule):
             }) for image, generated_mask, predicted_mask, reference_mask in
             zip(images, generated_masks, predicted_masks, reference_masks)]
         })
-        self.run.log({'Operators': self._cpu_params(self.mask_generator)})
+        # self.run.log({'Operators': self._cpu_params(self.mask_generator)})
         self.validation_batch = None
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):

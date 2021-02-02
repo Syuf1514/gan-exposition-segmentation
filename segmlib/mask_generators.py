@@ -1,8 +1,9 @@
 import torch
-import numpy as np
 
 from abc import ABC, abstractmethod
 from torch import nn
+
+from .unet import UNet
 
 
 rgb_channels = 3
@@ -26,6 +27,8 @@ class MaskGenerator(ABC, nn.Module):
             return AffineMaskGenerator(n_classes)
         elif name == 'grayscale':
             return GrayscaleMaskGenerator(n_classes)
+        elif name == 'neural':
+            return NeuralMaskGenerator(n_classes)
         else:
             raise ValueError(f'unknown mask generator "{name}"')
 
@@ -67,3 +70,21 @@ class GrayscaleMaskGenerator(MaskGenerator):
         difference = self.weight(shifted_images - images).squeeze(-1)
         probs = 0.5 * torch.sign(difference) * (2 * k - 1) + 0.5
         return probs.log()
+
+
+class NeuralMaskGenerator(MaskGenerator):
+    def __init__(self, n_classes):
+        super().__init__()
+        self.n_classes = n_classes
+
+        self.neural_operators = nn.ModuleList([UNet(in_channels=rgb_channels, out_channels=rgb_channels)
+                                               for _ in range(n_classes)])
+        self.register_parameter('log_sigma', nn.Parameter(torch.tensor(0.0)))
+
+    def log_probs(self, images, shifted_images, k):
+        images = images.permute(0, 3, 1, 2)
+        shifted_images = shifted_images.permute(0, 3, 1, 2)
+        difference = (shifted_images - self.neural_operators[k](images)) / self.log_sigma.exp()
+        dependent_part = -0.5 * torch.einsum('bcij, bcij -> bij', difference, difference)
+        constant_part = -rgb_channels * self.log_sigma
+        return dependent_part + constant_part

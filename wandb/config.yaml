@@ -9,10 +9,10 @@ direction:
   value: weights/direction.pth
 train_embeddings:
   desc: dataset images embeddings path for training
-  value: embeddings/cub_train.pth
+  value: embeddings/flowers_train.pth
 valid_embeddings:
   desc: dataset images embeddings path for validation
-  value: embeddings/cub_valid.pth
+  value: embeddings/flowers_valid.pth
 test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
@@ -24,7 +24,7 @@ test_datasets:
 
 mask_generator:
   desc: name of the mask generator to use for training
-  value: affine
+  value: neural
 n_classes:
   desc: number of the segmentation classes
   value: 2
@@ -58,7 +58,7 @@ gan_resolution:
   value: 128
 model_batch_size:
   desc: the size of minibatches for the segmentation model
-  value: 64
+  value: 32
 gan_batch_size:
   desc: the size of minibatches for GAN generator
   value: 128
