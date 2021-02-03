@@ -7,6 +7,7 @@ from .unet import UNet
 
 
 rgb_channels = 3
+logit_epsilon = 1e-3
 
 
 class MaskGenerator(ABC, nn.Module):
@@ -38,15 +39,17 @@ class AffineMaskGenerator(MaskGenerator):
         super().__init__()
         self.n_classes = n_classes
         self.affine_operators = nn.ModuleList([nn.Linear(rgb_channels, rgb_channels) for _ in range(n_classes)])
-        for operator in self.affine_operators:
-            operator.weight.data = torch.eye(rgb_channels)
         # self.inv_sigma_operators = nn.ModuleList([nn.Linear(rgb_channels, rgb_channels, bias=False)
         #                                           for _ in range(n_classes)])
+        for operator in self.affine_operators:
+            operator.weight.data = torch.eye(rgb_channels)
         # for operator in self.inv_sigma_operators:
         #     operator.weight.data = torch.eye(rgb_channels)
         self.register_parameter('log_sigma', nn.Parameter(torch.tensor(0.0)))
 
     def log_probs(self, images, shifted_images, k):
+        images = images.logit(eps=logit_epsilon)
+        shifted_images = shifted_images.logit(eps=logit_epsilon)
         # difference = self.inv_sigma_operators[k](shifted_images - self.affine_operators[k](images))
         difference = (shifted_images - self.affine_operators[k](images)) / self.log_sigma.exp()
         dependent_part = -0.5 * torch.einsum('bijc, bijc -> bij', difference, difference)
@@ -83,7 +86,7 @@ class NeuralMaskGenerator(MaskGenerator):
 
     def log_probs(self, images, shifted_images, k):
         images = images.permute(0, 3, 1, 2)
-        shifted_images = shifted_images.permute(0, 3, 1, 2)
+        shifted_images = shifted_images.permute(0, 3, 1, 2).logit(eps=logit_epsilon)
         difference = (shifted_images - self.neural_operators[k](images)) / self.log_sigma.exp()
         dependent_part = -0.5 * torch.einsum('bcij, bcij -> bij', difference, difference)
         constant_part = -rgb_channels * self.log_sigma

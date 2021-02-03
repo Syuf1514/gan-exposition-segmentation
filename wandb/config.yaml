@@ -7,12 +7,9 @@ backbone_weights:
 direction:
   desc: latent direction path
   value: weights/direction.pth
-train_embeddings:
+embeddings:
   desc: dataset images embeddings path for training
-  value: embeddings/flowers_train.pth
-valid_embeddings:
-  desc: dataset images embeddings path for validation
-  value: embeddings/flowers_valid.pth
+  value: embeddings/flowers.pth
 test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
@@ -24,7 +21,7 @@ test_datasets:
 
 mask_generator:
   desc: name of the mask generator to use for training
-  value: neural
+  value: affine
 n_classes:
   desc: number of the segmentation classes
   value: 2
@@ -58,7 +55,7 @@ gan_resolution:
   value: 128
 model_batch_size:
   desc: the size of minibatches for the segmentation model
-  value: 32
+  value: 64
 gan_batch_size:
   desc: the size of minibatches for GAN generator
   value: 128

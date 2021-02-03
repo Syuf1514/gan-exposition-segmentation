@@ -2,15 +2,15 @@ import torch
 
 
 class ImagesGenerator:
-    def __init__(self, gan, embeddings, hparams):
+    def __init__(self, gan, direction, hparams):
         super().__init__()
         self.gan = gan
-        if embeddings is None:
+        self.direction = direction
+
+        if hparams.embeddings is None:
             self.embeddings = torch.zeros(1, gan.dim_z)
         else:
-            self.embeddings = torch.load(embeddings)
-
-        self.direction = torch.load(hparams.direction)
+            self.embeddings = torch.load(hparams.embeddings)
         self.gan_device = hparams.gan_device
         self.gan_batch_size = hparams.gan_batch_size
         self.z_shift = hparams.z_shift

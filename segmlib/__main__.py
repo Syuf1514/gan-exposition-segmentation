@@ -13,7 +13,7 @@ from segmlib import UnconditionalBigGAN, UNet, SegmentationModel, MaskGenerator
 
 
 os.environ['WANDB_SILENT'] = 'true'
-logging.getLogger("lightning").setLevel(logging.ERROR)
+logging.getLogger('lightning').setLevel(logging.ERROR)
 warnings.filterwarnings('ignore')
 multiprocessing.set_start_method('spawn')
 root_path = Path(__file__).resolve().parents[1]
@@ -34,11 +34,12 @@ run.config.update(params, allow_val_change=True)
 if run.config.seed is not None:
     pl.seed_everything(run.config.seed)
 
-gan = UnconditionalBigGAN.load(run.config.gan_weights, run.config.gan_resolution, run.config.gan_device).eval()
+gan = UnconditionalBigGAN.load(run.config.gan_weights, run.config.gan_resolution, run.config.gan_device)
 mask_generator = MaskGenerator.create(run.config.mask_generator, run.config.n_classes)
 backbone = UNet(in_channels=3, out_channels=run.config.n_classes)
 if run.config.backbone_weights is not None:
-    backbone.load_state_dict(torch.load(run.config.backbone_weights))
+    weights = torch.load(run.config.backbone_weights, map_location='cpu')
+    backbone.load_state_dict(weights)
 model = SegmentationModel(run, gan, mask_generator, backbone)
 
 trainer = pl.Trainer(

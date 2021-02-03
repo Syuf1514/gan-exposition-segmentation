@@ -3,14 +3,13 @@ import torch
 from . import BigGAN
 
 
-class UnconditionalBigGAN(torch.nn.Module):
+class UnconditionalBigGAN:
     def __init__(self, gan):
-        super().__init__()
         self.gan = gan
         self.dim_z = self.gan.dim_z
 
-    def forward(self, z):
-        classes = torch.zeros(z.shape[0], dtype=torch.int64, device=z.device)
+    def __call__(self, z):
+        classes = torch.zeros(z.size(0), dtype=torch.int64, device=z.device)
         return self.gan(z, self.gan.shared(classes))
 
     @staticmethod
@@ -19,8 +18,10 @@ class UnconditionalBigGAN(torch.nn.Module):
         weights = torch.load(weights_path, map_location='cpu')
         gan = BigGAN.Generator(**config)
         gan.load_state_dict(weights, strict=False)
-        gan = UnconditionalBigGAN(gan).cuda(device)
-        return gan
+        for parameter in gan.parameters():
+            parameter.requires_grad = False
+        gan.cuda(device).eval()
+        return UnconditionalBigGAN(gan)
 
 
 def make_biggan_config(resolution):
