@@ -122,7 +122,8 @@ class SegmentationModel(pl.LightningModule):
     def _optimize_permutation(self, masks_hat, masks):
         # permutations = list(tls.permutations(range(self.hparams.n_classes)))
         permutations = list(tls.product([0, 1], repeat=self.hparams.n_classes))
-        metrics = [accuracy(self._permute_labels(masks_hat, permutation), masks) for permutation in permutations]
+        metrics = [sum(binary_iou(self._permute_labels(mask_hat, permutation), mask)
+                       for mask_hat, mask in zip(masks_hat, masks)) for permutation in permutations]
         return permutations[np.argmax(metrics)]
 
     @staticmethod

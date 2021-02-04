@@ -141,7 +141,7 @@ class GaussianMaskGenerator(nn.Module):
         sigma = torch.einsum('kuaij, ukij, kubij -> ukab', colors_part, normalized_probs, colors_part)
         sigma += epsilon * torch.eye(3, device=images.device).repeat(images.size(0), self.n_classes, 1, 1)
 
-        log_masks = probs.log()
-        log_masks += -0.5 * torch.einsum('kuaij, ukab, kubij -> ukij', colors_part, sigma.inverse(), colors_part)
+        # log_masks = probs.log()
+        log_masks = -0.5 * torch.einsum('kuaij, ukab, kubij -> ukij', colors_part, sigma.inverse(), colors_part)
         log_masks += -0.5 * torch.logdet(sigma).repeat(128, 128, 1, 1).permute(2, 3, 0, 1)
         return log_masks
