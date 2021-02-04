@@ -9,7 +9,7 @@ direction:
   value: weights/direction.pth
 embeddings:
   desc: dataset images embeddings path for training
-  value: embeddings/flowers.pth
+  value: embeddings/cub.pth
 test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
@@ -21,10 +21,10 @@ test_datasets:
 
 mask_generator:
   desc: name of the mask generator to use for training
-  value: affine
+  value: gaussian
 n_classes:
   desc: number of the segmentation classes
-  value: 2
+  value: 3
 z_noise:
   desc: amplitude of z noise
   value: 0.1
@@ -49,7 +49,7 @@ train:
   value: true
 epochs:
   desc: number of epochs to train the model
-  value: 5
+  value: 10
 gan_resolution:
   desc: width and height of generated square images by GAN
   value: 128

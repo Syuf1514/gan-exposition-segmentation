@@ -45,8 +45,9 @@ class SegmentationModel(pl.LightningModule):
 
     def step(self, batch):
         images, shifted_images = batch
-        generated_masks = self.mask_generator(batch)
+        # generated_masks = self.mask_generator(batch)
         predicted_masks = self.backbone(images).log_softmax(dim=1)
+        generated_masks = self.mask_generator((images, shifted_images, predicted_masks))
         reference_masks = generated_masks + predicted_masks
         loss = -torch.logsumexp(reference_masks, dim=1).mean()
         return loss, (images, generated_masks, predicted_masks, reference_masks)
@@ -88,6 +89,7 @@ class SegmentationModel(pl.LightningModule):
         return metrics_batch
 
     def test_epoch_end(self, test_steps_outputs):
+        self.run.log({'labels': self.labels_permutation})
         if len(self.test_sets_names) == 1:
             test_steps_outputs = [test_steps_outputs]
         for set_name, set_metrics_batches in zip(self.test_sets_names, test_steps_outputs):
@@ -118,7 +120,8 @@ class SegmentationModel(pl.LightningModule):
         return dataloaders
 
     def _optimize_permutation(self, masks_hat, masks):
-        permutations = list(tls.permutations(range(self.hparams.n_classes)))
+        # permutations = list(tls.permutations(range(self.hparams.n_classes)))
+        permutations = list(tls.product([0, 1], repeat=self.hparams.n_classes))
         metrics = [accuracy(self._permute_labels(masks_hat, permutation), masks) for permutation in permutations]
         return permutations[np.argmax(metrics)]
 
