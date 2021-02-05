@@ -8,8 +8,7 @@ from pathlib import Path
 from wandb import Image
 from torch.utils.data import DataLoader
 
-from .images_generator import ImagesGenerator
-from .datasets import ImagesDataset, SegmentationDataset
+from .datasets import GenerationDataset, SegmentationDataset
 from .metrics import accuracy, binary_iou, binary_fbeta
 
 
@@ -22,65 +21,60 @@ class SegmentationModel(pl.LightningModule):
         self.backbone = backbone
         self.hparams = dict(run.config)
 
-        self.direction = torch.load(self.hparams.direction)
+        self.register_parameter('direction', torch.nn.Parameter(
+            torch.load(self.hparams.direction), requires_grad=self.hparams.train_direction))
         self.test_sets_names = [Path(path).resolve().stem for path in self.hparams.test_datasets]
-        self.labels_permutation = None
+        self.labeling = None
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam([
-            {'params': self.backbone.parameters(), 'lr': self.hparams.backbone_lr},
-            {'params': self.mask_generator.parameters(), 'lr': self.hparams.mask_generator_lr}
-        ])
-        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=[
-            lambda epoch: self.hparams.lr_decay ** epoch,
-            lambda epoch: self.hparams.lr_decay ** epoch
-        ])
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer, lr_lambda=lambda epoch: self.hparams.lr_decay ** epoch)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
     def forward(self, images):
         masks = self.backbone(images).argmax(dim=1)
-        if self.labels_permutation is not None:
-            masks = self._permute_labels(masks, self.labels_permutation)
+        if self.labeling is not None:
+            masks = self._perform_labeling(masks, self.labeling)
         return masks
 
     def step(self, batch):
         images, shifted_images = batch
-        # generated_masks = self.mask_generator(batch)
-        predicted_masks = self.backbone(images).log_softmax(dim=1)
+        predicted_masks = self.backbone(images.sigmoid()).log_softmax(dim=1)
         generated_masks = self.mask_generator((images, shifted_images, predicted_masks))
-        reference_masks = generated_masks + predicted_masks
+        reference_masks = predicted_masks + generated_masks
         loss = -torch.logsumexp(reference_masks, dim=1).mean()
-        return loss, (images, generated_masks, predicted_masks, reference_masks)
+        return loss, (images, predicted_masks, generated_masks, reference_masks)
 
     def training_step(self, batch, batch_idx):
-        loss, (images, generated_masks, predicted_masks, reference_masks) = self.step(batch)
+        loss, (images, predicted_masks, generated_masks, reference_masks) = self.step(batch)
         self.run.log({'Training Loss': loss}, commit=False)
         classes_priors = predicted_masks.detach().exp().mean(dim=(0, 2, 3)).cpu()
-        self.run.log({f'class_{k} prior': prior.item() for k, prior in enumerate(classes_priors)})
+        self.run.log({f'class_{k}': prior.item() for k, prior in enumerate(classes_priors)})
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, (images, generated_masks, predicted_masks, reference_masks) = self.step(batch)
-        images = images.permute(0, 2, 3, 1).cpu().numpy()
+        loss, (images, predicted_masks, generated_masks, reference_masks) = self.step(batch)
+        images = images.sigmoid().permute(0, 2, 3, 1).cpu().numpy()
         generated_masks = generated_masks.argmax(dim=1).cpu().numpy()
         predicted_masks = predicted_masks.argmax(dim=1).cpu().numpy()
         reference_masks = reference_masks.argmax(dim=1).cpu().numpy()
         self.run.log({'Segmentation Examples': [
             Image(image, masks={
-                'generated': {'mask_data': generated_mask},
                 'predicted': {'mask_data': predicted_mask},
+                'generated': {'mask_data': generated_mask},
                 'reference': {'mask_data': reference_mask}
-            }) for image, generated_mask, predicted_mask, reference_mask in
-            zip(images, generated_masks, predicted_masks, reference_masks)]
+            }) for image, predicted_mask, generated_mask, reference_mask in
+            zip(images, predicted_masks, generated_masks, reference_masks)]
         })
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):
         images, masks = batch
         masks = masks.cpu()
         masks_hat = self(images).cpu()
-        if self.labels_permutation is None:
-            self.labels_permutation = self._optimize_permutation(masks_hat, masks)
-            masks_hat = self._permute_labels(masks_hat, self.labels_permutation)
+        if self.labeling is None:
+            self.labeling = self._optimize_labeling(masks_hat, masks)
+            masks_hat = self._perform_labeling(masks_hat, self.labeling)
         metrics_batch = [{
                 'acc': accuracy(mask_hat, mask),
                 'iou': binary_iou(mask_hat, mask),
@@ -89,7 +83,7 @@ class SegmentationModel(pl.LightningModule):
         return metrics_batch
 
     def test_epoch_end(self, test_steps_outputs):
-        self.run.log({'labels': self.labels_permutation})
+        self.run.log({'labels': self.labeling})
         if len(self.test_sets_names) == 1:
             test_steps_outputs = [test_steps_outputs]
         for set_name, set_metrics_batches in zip(self.test_sets_names, test_steps_outputs):
@@ -101,14 +95,12 @@ class SegmentationModel(pl.LightningModule):
                           for metric_name, std_value in stats['std'].iteritems()})
 
     def train_dataloader(self):
-        images_generator = ImagesGenerator(self.gan, self.direction, self.hparams)
-        dataset = ImagesDataset(images_generator, length=self.hparams.train_samples)
+        dataset = GenerationDataset(self.gan, self.direction, self.hparams, length=self.hparams.train_samples)
         dataloader = DataLoader(dataset, batch_size=self.hparams.model_batch_size, num_workers=1)
         return dataloader
 
     def val_dataloader(self):
-        images_generator = ImagesGenerator(self.gan, self.direction, self.hparams)
-        dataset = ImagesDataset(images_generator, length=self.hparams.model_batch_size)
+        dataset = GenerationDataset(self.gan, self.direction, self.hparams, length=self.hparams.model_batch_size)
         dataloader = DataLoader(dataset, batch_size=self.hparams.model_batch_size, num_workers=1)
         return dataloader
 
@@ -119,15 +111,14 @@ class SegmentationModel(pl.LightningModule):
                        for dataset in datasets]
         return dataloaders
 
-    def _optimize_permutation(self, masks_hat, masks):
-        # permutations = list(tls.permutations(range(self.hparams.n_classes)))
-        permutations = list(tls.product([0, 1], repeat=self.hparams.n_classes))
-        metrics = [sum(binary_iou(self._permute_labels(mask_hat, permutation), mask)
-                       for mask_hat, mask in zip(masks_hat, masks)) for permutation in permutations]
-        return permutations[np.argmax(metrics)]
+    def _optimize_labeling(self, masks_hat, masks):
+        labelings = list(tls.product([0, 1], repeat=self.hparams.n_classes))
+        metrics = [sum(binary_iou(self._perform_labeling(mask_hat, labeling), mask)
+                       for mask_hat, mask in zip(masks_hat, masks)) for labeling in labelings]
+        return labelings[np.argmax(metrics)]
 
     @staticmethod
-    def _permute_labels(tensor, permutation):
+    def _perform_labeling(tensor, permutation):
         result = torch.zeros_like(tensor)
         for old_label, new_label in enumerate(permutation):
             result[tensor == old_label] = new_label

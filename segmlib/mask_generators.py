@@ -1,147 +1,50 @@
 import torch
 
-from abc import ABC, abstractmethod
-from torch import nn
-from sklearn.mixture import GaussianMixture
 
-from .unet import UNet
+class EMMaskGenerator(torch.nn.Module):
+    def __init__(self, em_steps):
+        super().__init__()
+        self.em_steps = em_steps
+        self.eps = torch.finfo(torch.float32).eps
 
+    def m_step(self, padded_images, shifted_images, generated_probs, n_classes, batch_size, rgb_channels, device):
+        ops_first_part = torch.einsum('uaij, ukij, ubij -> ukab', shifted_images, generated_probs, padded_images)
+        ops_second_part = torch.einsum('uaij, ukij, ubij -> ukab', padded_images, generated_probs, padded_images)
+        ops_norm_factor = torch.einsum('ukaa -> uk', ops_second_part).reshape(batch_size, n_classes, 1, 1)
+        ops_first_part_normed = ops_first_part / ops_norm_factor.expand(*ops_first_part.shape)
+        ops_second_part_normed = ops_second_part / ops_norm_factor.expand(*ops_second_part.shape) + self.eps * \
+                                 torch.eye(rgb_channels + 1, device=device).repeat(batch_size, n_classes, 1, 1)
+        ops = torch.einsum('ukab, ukbc -> ukac', ops_first_part_normed, ops_second_part_normed.inverse())
 
-rgb_channels = 3
-epsilon = 1e-3
+        probs_norm_factor = generated_probs.sum(dim=(2, 3)).reshape(batch_size, n_classes, 1, 1)
+        predicted_probs_normed = generated_probs / probs_norm_factor.expand(*generated_probs.shape)
+        difference = shifted_images.repeat(n_classes, 1, 1, 1, 1) - \
+                     torch.einsum('ukab, ubij -> kuaij', ops, padded_images)
+        sigmas = torch.einsum('kuaij, ukij, kubij -> ukab', difference, predicted_probs_normed, difference) + \
+                 self.eps * torch.eye(rgb_channels, device=device).repeat(batch_size, n_classes, 1, 1)
 
+        return ops, sigmas
 
-class MaskGenerator(ABC, nn.Module):
-    def forward(self, batch):
-        images, shifted_images = batch
-        images = images.permute(0, 2, 3, 1)
-        shifted_images = shifted_images.permute(0, 2, 3, 1)
-        log_masks = torch.stack([self.log_probs(images, shifted_images, k) for k in range(self.n_classes)], dim=1)
+    def e_step(self, padded_images, shifted_images, ops, sigmas, n_classes, image_shape, batch_size):
+        difference = shifted_images.repeat(n_classes, 1, 1, 1, 1) - \
+                     torch.einsum('ukab, ubij -> kuaij', ops, padded_images)
+        log_masks = -0.5 * torch.einsum('kuaij, ukab, kubij -> ukij', difference, sigmas.inverse(), difference) + \
+                    -0.5 * torch.logdet(sigmas).reshape(batch_size, n_classes, 1, 1).expand(-1, -1, *image_shape)
         return log_masks
-
-    @abstractmethod
-    def log_probs(self, images, shifted_images, k):
-        pass
-
-    @staticmethod
-    def create(name, n_classes):
-        if name == 'affine':
-            return AffineMaskGenerator(n_classes)
-        elif name == 'grayscale':
-            return GrayscaleMaskGenerator(n_classes)
-        elif name == 'neural':
-            return NeuralMaskGenerator(n_classes)
-        elif name == 'gaussian':
-            return GaussianMaskGenerator(n_classes)
-        else:
-            raise ValueError(f'unknown mask generator "{name}"')
-
-
-class AffineMaskGenerator(MaskGenerator):
-    def __init__(self, n_classes):
-        super().__init__()
-        self.n_classes = n_classes
-        self.affine_operators = nn.ModuleList([nn.Linear(rgb_channels, rgb_channels) for _ in range(n_classes)])
-        # self.inv_sigma_operators = nn.ModuleList([nn.Linear(rgb_channels, rgb_channels, bias=False)
-        #                                           for _ in range(n_classes)])
-        for operator in self.affine_operators:
-            operator.weight.data = torch.eye(rgb_channels)
-        # for operator in self.inv_sigma_operators:
-        #     operator.weight.data = torch.eye(rgb_channels)
-        self.register_parameter('log_sigma', nn.Parameter(torch.tensor(0.0)))
-
-    def log_probs(self, images, shifted_images, k):
-        # difference = self.inv_sigma_operators[k](shifted_images - self.affine_operators[k](images))
-        difference = (shifted_images - self.affine_operators[k](images)) / self.log_sigma.exp()
-        dependent_part = -0.5 * torch.einsum('bijc, bijc -> bij', difference, difference)
-        # constant_part = torch.slogdet(self.inv_sigma_operators[k].weight).logabsdet
-        constant_part = -rgb_channels * self.log_sigma
-        return dependent_part + constant_part
-
-
-class GrayscaleMaskGenerator(MaskGenerator):
-    def __init__(self, n_classes):
-        super().__init__()
-        if n_classes != 2:
-            raise ValueError('grayscale mask generator only supports binary segmentation')
-        self.n_classes = n_classes
-
-        self.weight = nn.Linear(rgb_channels, 1, bias=False)
-        self.weight.weight.data = torch.tensor([0.299, 0.587, 0.114])
-        self.weight.weight.requires_grad = False
-
-    def log_probs(self, images, shifted_images, k):
-        difference = self.weight(shifted_images - images).squeeze(-1)
-        probs = 0.5 * torch.sign(difference) * (2 * k - 1) + 0.5
-        return probs.log()
-
-
-class NeuralMaskGenerator(MaskGenerator):
-    def __init__(self, n_classes):
-        super().__init__()
-        self.n_classes = n_classes
-
-        self.neural_operators = nn.ModuleList([UNet(in_channels=rgb_channels, out_channels=rgb_channels)
-                                               for _ in range(n_classes)])
-        self.register_parameter('log_sigma', nn.Parameter(torch.tensor(0.0)))
-
-    def log_probs(self, images, shifted_images, k):
-        images = images.permute(0, 3, 1, 2)
-        shifted_images = shifted_images.permute(0, 3, 1, 2)
-        difference = (shifted_images - self.neural_operators[k](images)) / self.log_sigma.exp()
-        dependent_part = -0.5 * torch.einsum('bcij, bcij -> bij', difference, difference)
-        constant_part = -rgb_channels * self.log_sigma
-        return dependent_part + constant_part
-
-
-# class GaussianMaskGenerator(nn.Module):
-#     def __init__(self, n_classes):
-#         super().__init__()
-#         self.n_classes = n_classes
-#
-#     def forward(self, batch):
-#         images, shifted_images = batch
-#         images = images.permute(0, 2, 3, 1)
-#         shifted_images = shifted_images.permute(0, 2, 3, 1)
-#         masks = []
-#         data = torch.cat((images, shifted_images), dim=3).reshape(images.size(0), -1, 6).logit(eps=1e-3).cpu().numpy()
-#         for color_pairs in data:
-#             gm = GaussianMixture(self.n_classes)
-#             gm.fit(color_pairs)
-#             mask = gm.predict_proba(color_pairs).reshape(128, 128, self.n_classes)
-#             masks.append(torch.Tensor(mask))
-#         return torch.stack(masks, dim=0).permute(0, 3, 1, 2).to(images.device)
-
-
-class GaussianMaskGenerator(nn.Module):
-    def __init__(self, n_classes):
-        super().__init__()
-        self.n_classes = n_classes
 
     def forward(self, batch):
         images, shifted_images, predicted_masks = batch
-        padded_images = torch.ones(4, images.size(0), 128, 128, device=images.device)
-        padded_images[:3] = images.permute(1, 0, 2, 3).logit(eps=epsilon)
-        padded_images = padded_images.permute(1, 0, 2, 3)
-        shifted_images = shifted_images.logit(eps=epsilon)
-        probs = predicted_masks.detach().clone().exp() + epsilon
+        batch_size, rgb_channels, *image_shape = images.shape
+        batch_size, n_classes, *image_shape = predicted_masks.shape
+        device = images.device
+        padded_images = torch.cat((images, torch.ones(batch_size, 1, *image_shape, device=device)), dim=1)
 
-        a_first_part = torch.einsum('uaij, ukij, ubij -> ukab', shifted_images, probs, padded_images)
-        a_second_part = torch.einsum('uaij, ukij, ubij -> ukab', padded_images, probs, padded_images)
-        normalization = torch.einsum('ukaa -> uk', a_second_part)
-        a_first_part /= normalization.repeat(3, 4, 1, 1).permute(2, 3, 0, 1)
-        a_second_part /= normalization.repeat(4, 4, 1, 1).permute(2, 3, 0, 1)
-        a_second_part += epsilon * torch.eye(4, device=images.device).repeat(images.size(0), self.n_classes, 1, 1)
-        a = torch.einsum('ukab, ukbc -> ukac', a_first_part, a_second_part.inverse())
-        # a = torch.solve(a_first_part.permute(0, 1, 3, 2), a_second_part).solution.permute(0, 1, 3, 2)
-
-        colors_part = shifted_images.repeat(self.n_classes, 1, 1, 1, 1) - \
-                      torch.einsum('ukab, ubij -> kuaij', a, padded_images)
-        normalized_probs = probs / probs.sum(dim=(2, 3)).repeat(128, 128, 1, 1).permute(2, 3, 0, 1)
-        sigma = torch.einsum('kuaij, ukij, kubij -> ukab', colors_part, normalized_probs, colors_part)
-        sigma += epsilon * torch.eye(3, device=images.device).repeat(images.size(0), self.n_classes, 1, 1)
-
-        # log_masks = probs.log()
-        log_masks = -0.5 * torch.einsum('kuaij, ukab, kubij -> ukij', colors_part, sigma.inverse(), colors_part)
-        log_masks += -0.5 * torch.logdet(sigma).repeat(128, 128, 1, 1).permute(2, 3, 0, 1)
-        return log_masks
+        generated_masks = torch.zeros_like(predicted_masks)
+        for _ in range(self.em_steps):
+            with torch.no_grad():
+                generated_probs = torch.softmax(predicted_masks + generated_masks, dim=1) + self.eps
+                ops, sigmas = self.m_step(padded_images, shifted_images, generated_probs,
+                                          n_classes, batch_size, rgb_channels, device)
+            generated_masks = self.e_step(padded_images, shifted_images, ops, sigmas,
+                                          n_classes, image_shape, batch_size)
+        return generated_masks

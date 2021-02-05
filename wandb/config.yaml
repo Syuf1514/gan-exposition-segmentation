@@ -19,12 +19,12 @@ test_datasets:
     - data/DUTS
     - data/OMRON
 
-mask_generator:
-  desc: name of the mask generator to use for training
-  value: gaussian
 n_classes:
   desc: number of the segmentation classes
   value: 3
+em_steps:
+  desc: number of EM steps to perform in the mask generator
+  value: 5
 z_noise:
   desc: amplitude of z noise
   value: 0.1
@@ -34,22 +34,22 @@ z_shift:
 fbeta_beta:
   desc: beta value for the F_beta metric
   value: 0.55
-backbone_lr:
-  desc: backbone learning rate
-  value: 0.001
-mask_generator_lr:
-  desc: mask generator learning rate
+learning_rate:
+  desc: model learning rate
   value: 0.001
 lr_decay:
   desc: factor which learning rates are multiplied by after every epoch
-  value: 0.9
+  value: 0.8
 
-train:
+train_model:
   desc: whether to train the model or not
   value: true
+train_direction:
+  desc: whether to train the latent direction or not
+  value: false
 epochs:
   desc: number of epochs to train the model
-  value: 50
+  value: 10
 gan_resolution:
   desc: width and height of generated square images by GAN
   value: 128
@@ -68,9 +68,6 @@ gan_device:
 train_samples:
   desc: number of samples to use on each epoch for training the model
   value: 25000
-valid_samples:
-  desc: number of samples to validate trained model on
-  value: 2500
 seed:
   desc: random seed
   value: null

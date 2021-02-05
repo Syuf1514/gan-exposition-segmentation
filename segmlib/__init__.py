@@ -1,7 +1,6 @@
 from .biggan import UnconditionalBigGAN
 from .unet import UNet
-from .datasets import ImagesDataset, SegmentationDataset
-from .images_generator import ImagesGenerator
+from .datasets import GenerationDataset, SegmentationDataset
 from .model import SegmentationModel
-from .mask_generators import MaskGenerator, AffineMaskGenerator, GrayscaleMaskGenerator
+from .mask_generators import EMMaskGenerator
 from .metrics import accuracy, binary_iou, binary_fbeta

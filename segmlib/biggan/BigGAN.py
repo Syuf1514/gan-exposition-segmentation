@@ -249,7 +249,8 @@ class Generator(nn.Module):
         h = block(h, ys[index])
         
     # Apply batchnorm-relu-conv-tanh at output
-    return torch.tanh(self.output_layer(h))
+    # return torch.tanh(self.output_layer(h))
+    return 2.0 * self.output_layer(h)
 
 
 # Discriminator architecture, same paradigm as G's above
