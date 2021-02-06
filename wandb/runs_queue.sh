@@ -1,4 +1,5 @@
-python -m segmlib --n_classes 3
-python -m segmlib --n_classes 4
-
-python -m segmlib --embeddings embeddings/imagenet.pth --epochs 100 --lr_decay 0.95
+python -m segmlib --em_warmup 10
+python -m segmlib --em_warmup 5
+python -m segmlib --em_warmup 2
+python -m segmlib --em_warmup 1
+python -m segmlib --em_warmup 0
