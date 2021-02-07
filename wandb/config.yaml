@@ -9,25 +9,22 @@ direction:
   value: weights/direction.pth
 embeddings:
   desc: dataset images embeddings path for training
-  value: embeddings/cub.pth
+  value: embeddings/imagenet.pth
 test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
+    - data/DUTS
     - data/CUB
     - data/flowers
     - data/ECSSD
-    - data/DUTS
     - data/OMRON
 
 n_classes:
   desc: number of the segmentation classes
-  value: 3
-em_warmup:
-  desc: number of training epochs after which increase EM steps in mask generator from 1 to 5
-  value: 2
+  value: 5
 z_noise:
   desc: amplitude of z noise
-  value: 0.1
+  value: 0.0
 z_shift:
   desc: norm of the shift along the latent direction
   value: 5.0
@@ -39,7 +36,7 @@ learning_rate:
   value: 0.001
 lr_decay:
   desc: factor which learning rates are multiplied by after every epoch
-  value: 0.8
+  value: 0.95
 
 train_model:
   desc: whether to train the model or not
@@ -49,7 +46,7 @@ train_direction:
   value: false
 epochs:
   desc: number of epochs to train the model
-  value: 10
+  value: 50
 gan_resolution:
   desc: width and height of generated square images by GAN
   value: 128
@@ -67,7 +64,7 @@ gan_device:
   value: 1
 train_samples:
   desc: number of samples to use on each epoch for training the model
-  value: 25000
+  value: 100000
 seed:
   desc: random seed
   value: null

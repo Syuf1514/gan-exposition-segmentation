@@ -32,10 +32,6 @@ class SegmentationModel(pl.LightningModule):
             optimizer, lr_lambda=lambda epoch: self.hparams.lr_decay ** epoch)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
-    def on_train_epoch_start(self):
-        if self.current_epoch >= self.hparams.em_warmup:
-            self.mask_generator.em_steps = 5
-
     def forward(self, images):
         masks = self.backbone(images).argmax(dim=1)
         if self.labeling is not None:
