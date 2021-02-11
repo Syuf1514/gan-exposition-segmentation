@@ -6,25 +6,25 @@ backbone_weights:
   value: null
 direction:
   desc: latent direction path
-  value: weights/direction.pth
+  value: weights/small_random_direction.pth
 embeddings:
   desc: dataset images embeddings path for training
-  value: embeddings/imagenet.pth
+  value: embeddings/cub.pth
 test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
-    - data/DUTS
     - data/CUB
+    - data/DUTS
     - data/flowers
     - data/ECSSD
     - data/OMRON
 
 n_classes:
   desc: number of the segmentation classes
-  value: 5
+  value: 3
 z_noise:
   desc: amplitude of z noise
-  value: 0.0
+  value: 0.1
 z_shift:
   desc: norm of the shift along the latent direction
   value: 5.0
@@ -36,7 +36,7 @@ learning_rate:
   value: 0.001
 lr_decay:
   desc: factor which learning rates are multiplied by after every epoch
-  value: 0.95
+  value: 0.8
 
 train_model:
   desc: whether to train the model or not
@@ -46,7 +46,7 @@ train_direction:
   value: false
 epochs:
   desc: number of epochs to train the model
-  value: 50
+  value: 10
 gan_resolution:
   desc: width and height of generated square images by GAN
   value: 128
@@ -64,7 +64,7 @@ gan_device:
   value: 1
 train_samples:
   desc: number of samples to use on each epoch for training the model
-  value: 100000
+  value: 25000
 seed:
   desc: random seed
   value: null
