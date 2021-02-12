@@ -24,7 +24,7 @@ class GenerationDataset(IterableDataset):
         z_idx = torch.randint(0, len(self.embeddings), (self.gan_batch_size,))
         z_codes = self.embeddings[z_idx]
         z_codes += self.z_noise * torch.randn_like(z_codes)
-        shifted_z_codes = z_codes + self.z_shift * self.direction.cpu()
+        shifted_z_codes = z_codes + self.z_shift * self.direction.cpu() / torch.norm(self.direction.cpu())
         images = self.gan(z_codes.cuda(self.gan_device)).cpu()
         shifted_images = self.gan(shifted_z_codes.cuda(self.gan_device)).cpu()
         batch = [(image, shifted_image) for image, shifted_image in zip(images, shifted_images)]

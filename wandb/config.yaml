@@ -6,7 +6,7 @@ backbone_weights:
   value: null
 direction:
   desc: latent direction path
-  value: weights/small_random_direction.pth
+  value: weights/random_direction.pth
 embeddings:
   desc: dataset images embeddings path for training
   value: embeddings/cub.pth
@@ -36,14 +36,14 @@ learning_rate:
   value: 0.001
 lr_decay:
   desc: factor which learning rates are multiplied by after every epoch
-  value: 0.8
+  value: 0.9
 
 train_model:
   desc: whether to train the model or not
   value: true
 train_direction:
   desc: whether to train the latent direction or not
-  value: false
+  value: true
 epochs:
   desc: number of epochs to train the model
   value: 10
@@ -52,10 +52,10 @@ gan_resolution:
   value: 128
 model_batch_size:
   desc: the size of minibatches for the segmentation model
-  value: 64
+  value: 24
 gan_batch_size:
   desc: the size of minibatches for GAN generator
-  value: 128
+  value: 24
 model_device:
   desc: CUDA device to use for the model training
   value: 0
@@ -64,7 +64,7 @@ gan_device:
   value: 1
 train_samples:
   desc: number of samples to use on each epoch for training the model
-  value: 25000
+  value: 5000
 seed:
   desc: random seed
   value: null
