@@ -1,5 +1,7 @@
 import torch
 
+from torch.nn.functional import one_hot
+
 
 class EMMaskGenerator(torch.nn.Module):
     def __init__(self, em_steps, alpha):
@@ -46,12 +48,19 @@ class EMMaskGenerator(torch.nn.Module):
         generated_masks = torch.zeros_like(predicted_masks)
         for _ in range(self.em_steps):
             with torch.no_grad():
-                generated_probs = torch.softmax(predicted_masks + generated_masks, dim=1) + self.eps
+                generated_probs = one_hot(torch.argmax(predicted_masks + generated_masks, dim=1),
+                                          num_classes=n_classes).permute(0, 3, 1, 2) + self.eps
                 ops, sigmas = self.m_step(padded_images, shifted_images, generated_probs,
                                           n_classes, batch_size, rgb_channels, device)
             generated_masks = self.e_step(padded_images, shifted_images, ops, sigmas,
                                           n_classes, image_shape, batch_size)
-        return generated_masks
+
+        generated_images = torch.zeros_like(images)
+        generated_classes = one_hot(torch.argmax(generated_masks, dim=1), num_classes=n_classes)
+        generated_classes = generated_classes.unsqueeze(1).expand(-1, rgb_channels, -1, -1, -1)
+        generated_parts = torch.einsum('ukab, ubij -> uaijk', ops, padded_images)
+        generated_images = torch.sum(generated_classes * generated_parts, dim=4)
+        return generated_masks, generated_images
 
 
 class ColorsEMMaskGenerator(torch.nn.Module):

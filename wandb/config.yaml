@@ -14,8 +14,8 @@ test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
     - data/CUB
-    - data/DUTS
     - data/flowers
+    - data/DUTS
     - data/ECSSD
     - data/OMRON
 

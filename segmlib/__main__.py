@@ -35,7 +35,7 @@ if run.config.seed is not None:
     pl.seed_everything(run.config.seed)
 
 gan = UnconditionalBigGAN.load(run.config.gan_weights, run.config.gan_resolution, run.config.gan_device)
-backbone_mask_generator = EMMaskGenerator(em_steps=10, alpha=None)
+backbone_mask_generator = EMMaskGenerator(em_steps=1, alpha=None)
 direction_mask_generator = ColorsEMMaskGenerator(em_steps=10, alpha=0.3)
 backbone = UNet(in_channels=3, out_channels=run.config.n_classes)
 if run.config.backbone_weights is not None:
