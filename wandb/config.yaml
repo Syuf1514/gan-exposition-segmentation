@@ -4,9 +4,9 @@ gan_weights:
 backbone_weights:
   desc: backbone weights path if want to load
   value: null
-direction:
-  desc: latent direction path
-  value: weights/small_random_direction.pth
+directions:
+  desc: latent directions path
+  value: weights/4_trained_directions.pth
 embeddings:
   desc: dataset images embeddings path for training
   value: embeddings/cub.pth
@@ -46,7 +46,7 @@ train_direction:
   value: false
 epochs:
   desc: number of epochs to train the model
-  value: 10
+  value: 5
 gan_resolution:
   desc: width and height of generated square images by GAN
   value: 128
@@ -64,7 +64,7 @@ gan_device:
   value: 1
 train_samples:
   desc: number of samples to use on each epoch for training the model
-  value: 25000
+  value: 10000
 seed:
   desc: random seed
   value: null

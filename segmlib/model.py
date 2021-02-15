@@ -21,8 +21,7 @@ class SegmentationModel(pl.LightningModule):
         self.backbone = backbone
         self.hparams = dict(run.config)
 
-        self.register_parameter('direction', torch.nn.Parameter(
-            torch.load(self.hparams.direction), requires_grad=self.hparams.train_direction))
+        self.directions = torch.load(self.hparams.directions, map_location='cpu')
         self.test_sets_names = [Path(path).resolve().stem for path in self.hparams.test_datasets]
         self.labeling = None
 
@@ -44,18 +43,20 @@ class SegmentationModel(pl.LightningModule):
         generated_masks = self.mask_generator((images, shifted_images, predicted_masks))
         reference_masks = predicted_masks + generated_masks
         loss = -torch.logsumexp(reference_masks, dim=1).mean()
-        return loss, (images, predicted_masks, generated_masks, reference_masks)
+        return loss, (predicted_masks, generated_masks, reference_masks)
 
     def training_step(self, batch, batch_idx):
-        loss, (images, predicted_masks, generated_masks, reference_masks) = self.step(batch)
+        loss, (predicted_masks, generated_masks, reference_masks) = self.step(batch)
         self.run.log({'Training Loss': loss}, commit=False)
         classes_priors = predicted_masks.detach().exp().mean(dim=(0, 2, 3)).cpu()
         self.run.log({f'class_{k}': prior.item() for k, prior in enumerate(classes_priors)})
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, (images, predicted_masks, generated_masks, reference_masks) = self.step(batch)
+        images, shifted_images = batch
+        loss, (predicted_masks, generated_masks, reference_masks) = self.step(batch)
         images = images.sigmoid().permute(0, 2, 3, 1).cpu().numpy()
+        shifted_images = shifted_images.sigmoid().permute(0, 1, 3, 4, 2).cpu().numpy()
         generated_masks = generated_masks.argmax(dim=1).cpu().numpy()
         predicted_masks = predicted_masks.argmax(dim=1).cpu().numpy()
         reference_masks = reference_masks.argmax(dim=1).cpu().numpy()
@@ -66,7 +67,16 @@ class SegmentationModel(pl.LightningModule):
                 'reference': {'mask_data': reference_mask}
             }) for image, predicted_mask, generated_mask, reference_mask in
             zip(images, predicted_masks, generated_masks, reference_masks)]
-        })
+        }, commit=False)
+        self.run.log({'Shifts Examples': [
+            Image(image, caption=caption)
+            for original_image, image_shifts in zip(images, shifted_images)
+            for caption, image in {
+                'original': original_image,
+                **{f'shifted #{idx + 1}': shifted_image
+                   for idx, shifted_image in enumerate(image_shifts)}
+            }.items()
+        ]})
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):
         images, masks = batch
@@ -95,12 +105,12 @@ class SegmentationModel(pl.LightningModule):
                           for metric_name, std_value in stats['std'].iteritems()})
 
     def train_dataloader(self):
-        dataset = GenerationDataset(self.gan, self.direction, self.hparams, length=self.hparams.train_samples)
+        dataset = GenerationDataset(self.gan, self.directions, self.hparams, length=self.hparams.train_samples)
         dataloader = DataLoader(dataset, batch_size=self.hparams.model_batch_size, num_workers=1)
         return dataloader
 
     def val_dataloader(self):
-        dataset = GenerationDataset(self.gan, self.direction, self.hparams, length=self.hparams.model_batch_size)
+        dataset = GenerationDataset(self.gan, self.directions, self.hparams, length=self.hparams.model_batch_size)
         dataloader = DataLoader(dataset, batch_size=self.hparams.model_batch_size, num_workers=1)
         return dataloader
 

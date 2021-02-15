@@ -5,10 +5,10 @@ from torch.utils.data import IterableDataset
 
 
 class GenerationDataset(IterableDataset):
-    def __init__(self, gan, direction, hparams, length):
+    def __init__(self, gan, directions, hparams, length):
         super().__init__()
         self.gan = gan
-        self.direction = direction
+        self.directions = directions
         self.length = length
 
         if hparams.embeddings is None:
@@ -24,10 +24,11 @@ class GenerationDataset(IterableDataset):
         z_idx = torch.randint(0, len(self.embeddings), (self.gan_batch_size,))
         z_codes = self.embeddings[z_idx]
         z_codes += self.z_noise * torch.randn_like(z_codes)
-        shifted_z_codes = z_codes + self.z_shift * self.direction.cpu()
+        shifted_z_codes = z_codes.unsqueeze(0) + self.z_shift * self.directions.unsqueeze(1)
         images = self.gan(z_codes.cuda(self.gan_device)).cpu()
-        shifted_images = self.gan(shifted_z_codes.cuda(self.gan_device)).cpu()
-        batch = [(image, shifted_image) for image, shifted_image in zip(images, shifted_images)]
+        shifted_images = torch.stack([self.gan(shifted_z_code.cuda(self.gan_device)).cpu()
+                                      for shifted_z_code in shifted_z_codes], dim=1)
+        batch = [(image, image_shifts) for image, image_shifts in zip(images, shifted_images)]
         return batch
 
     def __iter__(self):
