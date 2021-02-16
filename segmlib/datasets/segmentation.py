@@ -15,6 +15,8 @@ class SegmentationDataset(Dataset):
         self.resolution = resolution
         if mask_type == 'flowers':
             self._mask_processing = self._flowers_mask_processing
+        elif mask_type == 'PASCAL':
+            self._mask_processing = self._pascal_mask_processing
         else:
             self._mask_processing = self._default_mask_processing
 
@@ -68,4 +70,9 @@ class SegmentationDataset(Dataset):
     @staticmethod
     def _flowers_mask_processing(tensor):
         mask = torch.where((tensor[0] < 0.1) & (tensor[1] < 0.1) & (tensor[2] > 0.9), 0, 1)
+        return mask
+
+    @staticmethod
+    def _pascal_mask_processing(tensor):
+        mask = torch.where((tensor[0] > 0.0) & (tensor[0] < 1.0), 1, 0)
         return mask
