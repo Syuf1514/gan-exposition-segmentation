@@ -54,11 +54,11 @@ class SegmentationModel(pl.LightningModule):
         # idx = torch.randint(0, 2, (len(batch[0]),))
         # images, shifted_images = buffer[idx, torch.arange(len(idx))], buffer[1 - idx, torch.arange(len(idx))]
         images, shifted_images = batch
-        predicted_masks = self.backbone(images.sigmoid()).log_softmax(dim=1)
+        predicted_masks = self.backbone(shifted_images.sigmoid()).log_softmax(dim=1)
         # restoration_masks = self.backbone(shifted_images.detach().sigmoid()).log_softmax(dim=1)
-        backbone_generated_masks, generated_images = self.backbone_mask_generator((images, shifted_images, predicted_masks))
+        backbone_generated_masks, generated_images = self.backbone_mask_generator((shifted_images, images, predicted_masks))
         # _, restored_images = self.backbone_mask_generator((shifted_images, images, restoration_masks))
-        direction_generated_masks, _ = self.direction_mask_generator((images, shifted_images, predicted_masks))
+        # direction_generated_masks, _ = self.direction_mask_generator((images, shifted_images, predicted_masks))
 
         # reference_masks = predicted_masks + generated_masks
         # loss = -reference_masks.logsumexp(dim=1).mean()
@@ -70,25 +70,26 @@ class SegmentationModel(pl.LightningModule):
         # direction_loss = -torch.sum(direction_generated_masks.softmax(dim=1) *
         #                             direction_generated_masks.log_softmax(dim=1), dim=1).mean()
 
-        reference_masks = predicted_masks + backbone_generated_masks.detach()
+        reference_masks = predicted_masks + backbone_generated_masks
         # classes_priors = reference_masks.softmax(dim=1).mean(dim=(0, 2, 3))
-        predicted_classes_priors = predicted_masks.exp().mean(dim=(0, 2, 3))
-        generated_classes_priors = direction_generated_masks.softmax(dim=1).mean(dim=(0, 2, 3))
+        # predicted_classes_priors = predicted_masks.exp().mean(dim=(0, 2, 3))
+        # generated_classes_priors = direction_generated_masks.softmax(dim=1).mean(dim=(0, 2, 3))
         # loss = -(
         #     reference_masks.logsumexp(dim=1).mean() - \
         #     torch.sum(classes_priors * classes_priors.log()) - \
         #     torch.sum((images.sigmoid() - generated_images.sigmoid())**2, dim=1).mean()
         # )
         backbone_loss = -reference_masks.logsumexp(dim=1).mean()
+        direction_loss = -20.0 * torch.mean((images.sigmoid() - shifted_images.sigmoid())**2)
                         # torch.sum(predicted_classes_priors * predicted_classes_priors.log())
         # prior_loss = torch.sum(predicted_classes_priors * predicted_classes_priors.log()) + \
         #              5.0 * torch.sum(generated_classes_priors * generated_classes_priors.log())
         # generation_loss = 20.0 * torch.sum((shifted_images.sigmoid() - generated_images.sigmoid())**2, dim=1).mean() - \
         #                   20.0 * torch.sum(generated_masks.softmax(dim=1) * generated_masks.log_softmax(dim=1), dim=1).mean()
-        direction_loss = -direction_generated_masks.logsumexp(dim=1).mean() - \
-                         50.0 * torch.sum(direction_generated_masks.softmax(dim=1) *
-                                          direction_generated_masks.log_softmax(dim=1), dim=1).mean() + \
-                         50.0 * torch.sum(generated_classes_priors * generated_classes_priors.log())
+        # direction_loss = -direction_generated_masks.logsumexp(dim=1).mean() - \
+        #                  50.0 * torch.sum(direction_generated_masks.softmax(dim=1) *
+        #                                   direction_generated_masks.log_softmax(dim=1), dim=1).mean() + \
+        #                  50.0 * torch.sum(generated_classes_priors * generated_classes_priors.log())
         return (backbone_loss, direction_loss), \
                (images, shifted_images, generated_images), \
                (predicted_masks, backbone_generated_masks, reference_masks)
@@ -98,7 +99,7 @@ class SegmentationModel(pl.LightningModule):
         backbone_loss, direction_loss = losses
         predicted_masks, generated_masks, reference_masks = masks
         self.run.log({
-            'Backbone Loss': backbone_loss,
+            'Backbone Loss': backbone_loss.item(),
             'Direction Loss': direction_loss
         }, commit=False)
         # self.run.log({'Training Loss': loss}, commit=False)
@@ -126,7 +127,7 @@ class SegmentationModel(pl.LightningModule):
                 'reference': {'mask_data': reference_mask}
             }) for image, predicted_mask, generated_mask, reference_mask in
             zip(images, predicted_masks, generated_masks, reference_masks)]
-        })
+        }, commit=False)
         self.run.log({'Generation Examples': [
             Image(image, caption=caption)
             for original_image, shifted_image, generated_image in zip(images, shifted_images, generated_images)

@@ -72,15 +72,15 @@ class EMMaskGenerator(torch.nn.Module):
         device = images.device
         padded_images = torch.cat((images, torch.ones(batch_size, 1, *image_shape, device=device)), dim=1)
 
-        generated_masks = predicted_masks.detach().clone()
+        generated_masks = torch.zeros_like(predicted_masks)
         for _ in range(self.em_steps):
-            with torch.no_grad():
-                generated_probs = torch.softmax(generated_masks, dim=1) + self.eps
-                params = self.m_step(padded_images, shifted_images, generated_probs,
-                                     n_classes, batch_size, image_shape, rgb_channels, device)
+            # with torch.no_grad():
+            generated_probs = torch.softmax(predicted_masks + generated_masks, dim=1) + self.eps
+            params = self.m_step(padded_images, shifted_images, generated_probs,
+                                 n_classes, batch_size, image_shape, rgb_channels, device)
             generated_masks = self.e_step(padded_images, shifted_images, params,
                                           n_classes, image_shape, batch_size, rgb_channels)
 
         (mus, sigmas), (shifted_ops, shifted_sigmas) = params
-        generated_images = torch.einsum('ukab, ubij, ukij -> uaij', shifted_ops, padded_images, generated_masks.detach().softmax(dim=1))
+        generated_images = torch.einsum('ukab, ubij, ukij -> uaij', shifted_ops.detach(), padded_images.detach(), generated_masks.detach().softmax(dim=1))
         return generated_masks, generated_images
