@@ -32,12 +32,12 @@ class SegmentationModel(pl.LightningModule):
             {'params': self.backbone.parameters(), 'lr': 1e-3},
             {'params': [self.direction], 'lr': 1e-3}
         ])
-        # scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=[
-        #     lambda epoch: self.hparams.lr_decay ** epoch,
-        #     lambda epoch: self.hparams.lr_decay ** epoch
-        # ])
-        # return {'optimizer': optimizer, 'lr_scheduler': scheduler}
-        return optimizer
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=[
+            lambda epoch: self.hparams.lr_decay ** epoch,
+            lambda epoch: self.hparams.lr_decay ** epoch
+        ])
+        return {'optimizer': optimizer, 'lr_scheduler': scheduler}
+        # return optimizer
 
     def forward(self, images):
         masks = self.backbone(images).argmax(dim=1)
@@ -80,7 +80,7 @@ class SegmentationModel(pl.LightningModule):
         #     torch.sum((images.sigmoid() - generated_images.sigmoid())**2, dim=1).mean()
         # )
         backbone_loss = -reference_masks.logsumexp(dim=1).mean()
-        direction_loss = -20.0 * torch.mean((images.sigmoid() - shifted_images.sigmoid())**2)
+        direction_loss = -torch.mean((images.sigmoid() - shifted_images.sigmoid())**2).log()
                         # torch.sum(predicted_classes_priors * predicted_classes_priors.log())
         # prior_loss = torch.sum(predicted_classes_priors * predicted_classes_priors.log()) + \
         #              5.0 * torch.sum(generated_classes_priors * generated_classes_priors.log())

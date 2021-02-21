@@ -43,7 +43,7 @@ class EMMaskGenerator(torch.nn.Module):
                                           difference) + \
                              self.eps * torch.eye(rgb_channels, device=device).repeat(batch_size, n_classes, 1, 1)
         else:
-            shifted_sigmas = self.alpha ** 2 * torch.eye(rgb_channels, device=device).repeat(batch_size, n_classes, 1,
+            shifted_sigmas = self.alpha**2 * torch.eye(rgb_channels, device=device).repeat(batch_size, n_classes, 1,
                                                                                              1)
 
         mus, sigmas = self.gaussian_optimum(padded_images[:, :rgb_channels, :, :], predicted_probs_normed,
@@ -74,13 +74,13 @@ class EMMaskGenerator(torch.nn.Module):
 
         generated_masks = torch.zeros_like(predicted_masks)
         for _ in range(self.em_steps):
-            # with torch.no_grad():
-            generated_probs = torch.softmax(predicted_masks + generated_masks, dim=1) + self.eps
-            params = self.m_step(padded_images, shifted_images, generated_probs,
-                                 n_classes, batch_size, image_shape, rgb_channels, device)
+            with torch.no_grad():
+                generated_probs = torch.softmax(predicted_masks + generated_masks, dim=1) + self.eps
+                params = self.m_step(padded_images, shifted_images, generated_probs,
+                                     n_classes, batch_size, image_shape, rgb_channels, device)
             generated_masks = self.e_step(padded_images, shifted_images, params,
                                           n_classes, image_shape, batch_size, rgb_channels)
 
         (mus, sigmas), (shifted_ops, shifted_sigmas) = params
-        generated_images = torch.einsum('ukab, ubij, ukij -> uaij', shifted_ops.detach(), padded_images.detach(), generated_masks.detach().softmax(dim=1))
+        generated_images = torch.einsum('ukab, ubij, ukij -> uaij', shifted_ops, padded_images, predicted_masks.exp())
         return generated_masks, generated_images
