@@ -5,8 +5,8 @@ backbone_weights:
   desc: backbone weights path if want to load
   value: null
 direction:
-  desc: latent direction path
-  value: weights/random_direction.pth
+  desc: latent direction path if want to load
+  value: null
 embeddings:
   desc: dataset images embeddings path for training
   value: embeddings/cub.pth
@@ -21,7 +21,10 @@ test_datasets:
 
 n_classes:
   desc: number of the segmentation classes
-  value: 3
+  value: 5
+em_steps:
+  desc: number of EM steps to perform in the mask generator
+  value: 10
 z_noise:
   desc: amplitude of z noise
   value: 0.1
@@ -36,7 +39,7 @@ learning_rate:
   value: 0.001
 lr_decay:
   desc: factor which learning rates are multiplied by after every epoch
-  value: 0.8
+  value: 1.0
 
 train_model:
   desc: whether to train the model or not

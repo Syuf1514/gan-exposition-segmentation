@@ -13,31 +13,29 @@ from .metrics import accuracy, binary_iou, binary_fbeta
 
 
 class SegmentationModel(pl.LightningModule):
-    def __init__(self, run, gan, backbone_mask_generator, direction_mask_generator, backbone):
+    def __init__(self, run, gan, mask_generator, backbone, shifted_backbone):
         super().__init__()
         self.run = run
         self.gan = gan
-        self.backbone_mask_generator = backbone_mask_generator
-        self.direction_mask_generator = direction_mask_generator
+        self.mask_generator = mask_generator
         self.backbone = backbone
+        self.shifted_backbone = shifted_backbone
         self.hparams = dict(run.config)
 
-        self.register_parameter('direction', torch.nn.Parameter(
-            torch.load(self.hparams.direction), requires_grad=self.hparams.train_direction))
+        if self.hparams.direction is None:
+            direction = torch.randn(1, gan.dim_z)
+            direction /= torch.norm(direction)
+        else:
+            direction = torch.load(self.hparams.direction, map_location='cpu')
+        self.register_parameter('direction', torch.nn.Parameter(direction, requires_grad=self.hparams.train_direction))
         self.test_sets_names = [Path(path).resolve().stem for path in self.hparams.test_datasets]
         self.labeling = None
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam([
-            {'params': self.backbone.parameters(), 'lr': 1e-3},
-            {'params': [self.direction], 'lr': 1e-3}
-        ])
-        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=[
-            lambda epoch: self.hparams.lr_decay ** epoch,
-            lambda epoch: self.hparams.lr_decay ** epoch
-        ])
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer, lr_lambda=lambda epoch: self.hparams.lr_decay ** epoch)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
-        # return optimizer
 
     def forward(self, images):
         masks = self.backbone(images).argmax(dim=1)
@@ -45,95 +43,53 @@ class SegmentationModel(pl.LightningModule):
             masks = self._perform_labeling(masks, self.labeling)
         return masks
 
-    def backward(self, loss, optimizer, optimizer_idx):
-        loss.backward()
+    def on_before_zero_grad(self, optimizer):
         self.direction.data /= torch.norm(self.direction.data)
 
     def step(self, batch):
-        # buffer = torch.stack(batch, dim=0)
-        # idx = torch.randint(0, 2, (len(batch[0]),))
-        # images, shifted_images = buffer[idx, torch.arange(len(idx))], buffer[1 - idx, torch.arange(len(idx))]
         images, shifted_images = batch
-        predicted_masks = self.backbone(shifted_images.sigmoid()).log_softmax(dim=1)
-        # restoration_masks = self.backbone(shifted_images.detach().sigmoid()).log_softmax(dim=1)
-        backbone_generated_masks, generated_images = self.backbone_mask_generator((shifted_images, images, predicted_masks))
-        # _, restored_images = self.backbone_mask_generator((shifted_images, images, restoration_masks))
-        # direction_generated_masks, _ = self.direction_mask_generator((images, shifted_images, predicted_masks))
-
-        # reference_masks = predicted_masks + generated_masks
-        # loss = -reference_masks.logsumexp(dim=1).mean()
-
-        # direction_reference_masks = predicted_masks.detach() + direction_generated_masks
-
-        # direction_loss = -direction_generated_masks.logsumexp(dim=1).mean() + \
-        #                  10.0 * torch.sum(classes_priors * classes_priors.log())
-        # direction_loss = -torch.sum(direction_generated_masks.softmax(dim=1) *
-        #                             direction_generated_masks.log_softmax(dim=1), dim=1).mean()
-
-        reference_masks = predicted_masks + backbone_generated_masks
-        # classes_priors = reference_masks.softmax(dim=1).mean(dim=(0, 2, 3))
-        # predicted_classes_priors = predicted_masks.exp().mean(dim=(0, 2, 3))
-        # generated_classes_priors = direction_generated_masks.softmax(dim=1).mean(dim=(0, 2, 3))
-        # loss = -(
-        #     reference_masks.logsumexp(dim=1).mean() - \
-        #     torch.sum(classes_priors * classes_priors.log()) - \
-        #     torch.sum((images.sigmoid() - generated_images.sigmoid())**2, dim=1).mean()
-        # )
-        backbone_loss = -reference_masks.logsumexp(dim=1).mean()
-        direction_loss = -torch.mean((images.sigmoid() - shifted_images.sigmoid())**2).log()
-                        # torch.sum(predicted_classes_priors * predicted_classes_priors.log())
-        # prior_loss = torch.sum(predicted_classes_priors * predicted_classes_priors.log()) + \
-        #              5.0 * torch.sum(generated_classes_priors * generated_classes_priors.log())
-        # generation_loss = 20.0 * torch.sum((shifted_images.sigmoid() - generated_images.sigmoid())**2, dim=1).mean() - \
-        #                   20.0 * torch.sum(generated_masks.softmax(dim=1) * generated_masks.log_softmax(dim=1), dim=1).mean()
-        # direction_loss = -direction_generated_masks.logsumexp(dim=1).mean() - \
-        #                  50.0 * torch.sum(direction_generated_masks.softmax(dim=1) *
-        #                                   direction_generated_masks.log_softmax(dim=1), dim=1).mean() + \
-        #                  50.0 * torch.sum(generated_classes_priors * generated_classes_priors.log())
-        return (backbone_loss, direction_loss), \
-               (images, shifted_images, generated_images), \
-               (predicted_masks, backbone_generated_masks, reference_masks)
+        predicted_masks = self.backbone(images.sigmoid()).log_softmax(dim=1)
+        shifted_masks = self.shifted_backbone(shifted_images.sigmoid()).log_softmax(dim=1)
+        generated_masks = self.mask_generator((shifted_images, images, shifted_masks))
+        reference_masks = shifted_masks + generated_masks
+        normalized_reference = reference_masks.detach().log_softmax(dim=1)
+        prediction_loss = torch.sum(normalized_reference.exp() * (normalized_reference - predicted_masks), dim=1).mean()
+        direction_loss = -reference_masks.logsumexp(dim=1).mean() + \
+                         -torch.mean((images.sigmoid() - shifted_images.sigmoid()) ** 2).log()
+        return (prediction_loss, direction_loss), \
+               (predicted_masks, shifted_masks, generated_masks, reference_masks)
 
     def training_step(self, batch, batch_idx):
-        losses, all_images, masks = self.step(batch)
-        backbone_loss, direction_loss = losses
-        predicted_masks, generated_masks, reference_masks = masks
+        losses, masks = self.step(batch)
+        prediction_loss, direction_loss = losses
+        predicted_masks, shifted_masks, generated_masks, reference_masks = masks
         self.run.log({
-            'Backbone Loss': backbone_loss.item(),
-            'Direction Loss': direction_loss
+            'Prediction Loss': prediction_loss.item(),
+            'Direction Loss': direction_loss.item()
         }, commit=False)
-        # self.run.log({'Training Loss': loss}, commit=False)
-        classes_priors = predicted_masks.detach().exp().mean(dim=(0, 2, 3)).cpu()
+        classes_priors = predicted_masks.detach().exp().mean(dim=(0, 2, 3))
         self.run.log({f'class_{k}': prior.item() for k, prior in enumerate(classes_priors)})
-        return sum(losses)
+        return prediction_loss + direction_loss
 
     def validation_step(self, batch, batch_idx):
-        losses, all_images, masks = self.step(batch)
-        images, shifted_images, generated_images = [tensor.sigmoid().permute(0, 2, 3, 1).cpu().numpy()
-                                                    for tensor in all_images]
-        predicted_masks, generated_masks, reference_masks = [tensor.argmax(dim=1).cpu().numpy()
-                                                             for tensor in masks]
-
-        # images = images.sigmoid().permute(0, 2, 3, 1).cpu().numpy()
-        # shifted_images = shifted_images.sigmoid().permute(0, 2, 3, 1).cpu().numpy()
-        # generated_masks = generated_masks.argmax(dim=1).cpu().numpy()
-        # predicted_masks = predicted_masks.argmax(dim=1).cpu().numpy()
-        # reference_masks = reference_masks.argmax(dim=1).cpu().numpy()
-
+        losses, masks = self.step(batch)
+        predicted_masks, shifted_masks, generated_masks, reference_masks = \
+            [tensor.argmax(dim=1).cpu().numpy() for tensor in masks]
+        images, shifted_images = [tensor.sigmoid().permute(0, 2, 3, 1).cpu().numpy() for tensor in batch]
         self.run.log({'Segmentation Examples': [
             Image(image, masks={
                 'predicted': {'mask_data': predicted_mask},
+                'shifted': {'mask_data': shifted_mask},
                 'generated': {'mask_data': generated_mask},
                 'reference': {'mask_data': reference_mask}
-            }) for image, predicted_mask, generated_mask, reference_mask in
-            zip(images, predicted_masks, generated_masks, reference_masks)]
+            }) for image, predicted_mask, shifted_mask, generated_mask, reference_mask in
+            zip(images, predicted_masks, shifted_masks, generated_masks, reference_masks)]
         }, commit=False)
-        self.run.log({'Generation Examples': [
+        self.run.log({'Shifts Examples': [
             Image(image, caption=caption)
-            for original_image, shifted_image, generated_image in zip(images, shifted_images, generated_images)
+            for original_image, shifted_image in zip(images, shifted_images)
             for caption, image in {'original': original_image,
-                                   'shifted': shifted_image,
-                                   'generated': generated_image}.items()]
+                                   'shifted': shifted_image}.items()]
         })
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):
