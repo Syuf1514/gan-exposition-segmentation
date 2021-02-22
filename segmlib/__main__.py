@@ -9,7 +9,7 @@ import torch
 
 from pathlib import Path
 
-from segmlib import UnconditionalBigGAN, UNet, SegmentationModel, EMMaskGenerator
+from segmlib import UnconditionalBigGAN, UNet, SegmentationModel, EMMaskGenerator, DRNSeg
 
 
 os.environ['WANDB_SILENT'] = 'true'
@@ -34,13 +34,19 @@ run.config.update(params, allow_val_change=True)
 if run.config.seed is not None:
     pl.seed_everything(run.config.seed)
 
-gan = UnconditionalBigGAN.load(run.config.gan_weights, run.config.gan_resolution, run.config.gan_device)
-mask_generator = EMMaskGenerator(em_steps=1)
-backbone = UNet(in_channels=3, out_channels=run.config.n_classes)
-if run.config.backbone_weights is not None:
-    weights = torch.load(run.config.backbone_weights, map_location='cpu')
-    backbone.load_state_dict(weights)
-model = SegmentationModel(run, gan, mask_generator, backbone)
+# gan = UnconditionalBigGAN.load(run.config.gan_weights, run.config.gan_resolution, run.config.gan_device)
+# mask_generator = EMMaskGenerator(em_steps=1)
+# # backbone = UNet(in_channels=3, out_channels=run.config.n_classes)
+# if run.config.backbone_weights is not None:
+#     weights = torch.load(run.config.backbone_weights, map_location='cpu')
+#     backbone.load_state_dict(weights)
+device = 'cuda:0'
+backbone = DRNSeg('drn_d_105', 2, pretrained_model=None, pretrained=False).to(device)
+state_dict = torch.load('weights/deepusps_1.pth')['state_dict']
+state_dict = {key.replace('module.', '').replace('module.seg', 'fc'): value
+              for key, value in state_dict.items()}
+backbone.load_state_dict(state_dict)
+model = SegmentationModel(run, None, None, backbone)
 
 trainer = pl.Trainer(
     logger=False,

@@ -32,7 +32,7 @@ class SegmentationModel(pl.LightningModule):
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
     def forward(self, images):
-        masks = self.backbone(images).argmax(dim=1)
+        masks = self.backbone(images)[0].argmax(dim=1)
         if self.labeling is not None:
             masks = self._perform_labeling(masks, self.labeling)
         return masks

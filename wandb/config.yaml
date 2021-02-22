@@ -15,14 +15,13 @@ test_datasets:
   value:
     - data/CUB
     - data/flowers
-    - data/DUTS
     - data/ECSSD
+    - data/DUTS
     - data/OMRON
-    - data/PASCAL
 
 n_classes:
   desc: number of the segmentation classes
-  value: 3
+  value: 2
 z_noise:
   desc: amplitude of z noise
   value: 0.1
@@ -41,13 +40,13 @@ lr_decay:
 
 train_model:
   desc: whether to train the model or not
-  value: true
+  value: false
 epochs:
   desc: number of epochs to train the model
   value: 50
 gan_resolution:
   desc: width and height of generated square images by GAN
-  value: 128
+  value: 432
 model_batch_size:
   desc: the size of minibatches for the segmentation model
   value: 64
