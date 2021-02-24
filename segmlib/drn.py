@@ -3,6 +3,8 @@ import pdb
 import torch.nn as nn
 import math
 import torch.utils.model_zoo as model_zoo
+import torch
+from torchvision import models
 
 BatchNorm = nn.BatchNorm2d
 
@@ -425,14 +427,54 @@ class DRNSeg(nn.Module):
     def __init__(self, model_name, classes, pretrained_model=None,
                  pretrained=True, use_torch_up=False):
         super(DRNSeg, self).__init__()
-        model = globals().get(model_name)(
-            pretrained=pretrained, num_classes=1000)
+
+
+        # print('USING DRN_D_105 PRETRAINED BACKBONE')
+        # model = drn.__dict__.get(model_name)(
+        #     pretrained=pretrained, num_classes=1000)
+
+        # model = drn.drn_d_105(num_classes=19)
+        # state_dict = torch.load('Pretrained_Models/drn_pretraining/drn-d-105_ms_cityscapes.pth')
+        # state_dict = {key.replace('base.', 'layer').replace('seg.', 'fc.'): value
+        #               for key, value in state_dict.items()
+        #               if key != 'up.weight'}
+        # model.load_state_dict(state_dict)
+
+
+        # print('USING MOCO PRETRANED BACKBONE')
+        # print("=> loading checkpoint '{}'".format(args.pretrained))
+        checkpoint = torch.load('/home/synaps1996/DeepUSPS/Pretrained_Models/drn_pretraining/moco_v2_800.pth', map_location="cpu")
+        model = models.__dict__[checkpoint['arch']]()
+
+        # freeze all layers but the last fc
+        for name, param in model.named_parameters():
+            if name not in ['fc.weight', 'fc.bias']:
+                param.requires_grad = False
+        # init the fc layer
+        model.fc.weight.data.normal_(mean=0.0, std=0.01)
+        model.fc.bias.data.zero_()
+
+        # rename moco pre-trained keys
+        state_dict = checkpoint['state_dict']
+        for k in list(state_dict.keys()):
+            # retain only encoder_q up to before the embedding layer
+            if k.startswith('module.encoder_q') and not k.startswith('module.encoder_q.fc'):
+                # remove prefix
+                state_dict[k[len("module.encoder_q."):]] = state_dict[k]
+            # delete renamed or unused k
+            del state_dict[k]
+
+        # args.start_epoch = 0
+        msg = model.load_state_dict(state_dict, strict=False)
+        assert set(msg.missing_keys) == {"fc.weight", "fc.bias"}
+
+
         pmodel = nn.DataParallel(model)
         if pretrained_model is not None:
             pmodel.load_state_dict(pretrained_model)
         self.base = nn.Sequential(*list(model.children())[:-2])
 
-        self.seg = nn.Conv2d(model.out_dim, classes,
+        self.seg = nn.Conv2d(2048, classes,
                              kernel_size=1, bias=True)
 
         self.softmax = nn.Softmax()
@@ -444,7 +486,7 @@ class DRNSeg(nn.Module):
         if use_torch_up:
             self.up = nn.UpsamplingBilinear2d(scale_factor=8)
         else:
-            up = nn.ConvTranspose2d(classes, classes, 16, stride=8, padding=4,
+            up = nn.ConvTranspose2d(classes, classes, 16, stride=36, padding=4,
                                     output_padding=0, groups=classes,
                                     bias=False)
             fill_up_weights(up)

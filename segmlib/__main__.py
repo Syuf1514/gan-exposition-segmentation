@@ -41,8 +41,8 @@ if run.config.seed is not None:
 #     weights = torch.load(run.config.backbone_weights, map_location='cpu')
 #     backbone.load_state_dict(weights)
 device = 'cuda:0'
-backbone = DRNSeg('drn_d_105', 2, pretrained_model=None, pretrained=False).to(device)
-state_dict = torch.load('weights/deepusps_1.pth')['state_dict']
+backbone = DRNSeg('', 2, pretrained_model=None, pretrained=False).to(device)
+state_dict = torch.load('weights/deepusps_moco.pth')['state_dict']
 state_dict = {key.replace('module.', '').replace('module.seg', 'fc'): value
               for key, value in state_dict.items()}
 backbone.load_state_dict(state_dict)

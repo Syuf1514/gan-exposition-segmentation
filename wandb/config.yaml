@@ -47,7 +47,7 @@ epochs:
   value: 50
 gan_resolution:
   desc: width and height of generated square images by GAN
-  value: 432
+  value: 224
 model_batch_size:
   desc: the size of minibatches for the segmentation model
   value: 64
