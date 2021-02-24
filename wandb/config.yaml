@@ -4,6 +4,9 @@ gan_weights:
 backbone_weights:
   desc: backbone weights path if want to load
   value: null
+shifted_backbone_weights:
+  desc: shifted backbone weights path if want to load
+  value: null
 direction:
   desc: latent direction path if want to load
   value: null
@@ -21,7 +24,7 @@ test_datasets:
 
 n_classes:
   desc: number of the segmentation classes
-  value: 5
+  value: 3
 em_steps:
   desc: number of EM steps to perform in the mask generator
   value: 10
@@ -49,7 +52,7 @@ train_direction:
   value: true
 epochs:
   desc: number of epochs to train the model
-  value: 10
+  value: 25
 gan_resolution:
   desc: width and height of generated square images by GAN
   value: 128
@@ -67,7 +70,7 @@ gan_device:
   value: 1
 train_samples:
   desc: number of samples to use on each epoch for training the model
-  value: 5000
+  value: 25000
 seed:
   desc: random seed
   value: null

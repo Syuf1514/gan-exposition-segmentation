@@ -51,25 +51,32 @@ class SegmentationModel(pl.LightningModule):
         predicted_masks = self.backbone(images.sigmoid()).log_softmax(dim=1)
         shifted_masks = self.shifted_backbone(shifted_images.sigmoid()).log_softmax(dim=1)
         generated_masks = self.mask_generator((shifted_images, images, shifted_masks))
+        penalty_masks = self.mask_generator((shifted_images, images, torch.zeros_like(predicted_masks)[:, :1]))
         reference_masks = shifted_masks + generated_masks
         normalized_reference = reference_masks.detach().log_softmax(dim=1)
-        prediction_loss = torch.sum(normalized_reference.exp() * (normalized_reference - predicted_masks), dim=1).mean()
-        direction_loss = -reference_masks.logsumexp(dim=1).mean() + \
-                         -torch.mean((images.sigmoid() - shifted_images.sigmoid()) ** 2).log()
-        return (prediction_loss, direction_loss), \
+        prediction_kl = torch.sum(normalized_reference.exp() * (normalized_reference - predicted_masks), dim=1).mean()
+        likelihood = reference_masks.logsumexp(dim=1).mean()
+        # likelihood = torch.sum(generated_masks.softmax(dim=1) * shifted_masks, dim=1).mean()
+        # generated_images = shifted_images - shifted_images.mean(dim=(0, 2, 3)).reshape(1, -1, 1, 1) + \
+        #                    images.mean(dim=(0, 2, 3)).reshape(1, -1, 1, 1)
+        # penalty = 0.1 * torch.mean((images.sigmoid() - generated_images.sigmoid()) ** 2,
+        #                            dim=(1, 2, 3)).reciprocal().mean()
+        penalty = 1.5 * penalty_masks.mean()
+        return (prediction_kl, likelihood, penalty), \
                (predicted_masks, shifted_masks, generated_masks, reference_masks)
 
     def training_step(self, batch, batch_idx):
         losses, masks = self.step(batch)
-        prediction_loss, direction_loss = losses
+        prediction_kl, likelihood, penalty = losses
         predicted_masks, shifted_masks, generated_masks, reference_masks = masks
         self.run.log({
-            'Prediction Loss': prediction_loss.item(),
-            'Direction Loss': direction_loss.item()
+            'Prediction KL': prediction_kl.item(),
+            'Likelihood': likelihood.item(),
+            'Penalty': penalty.item()
         }, commit=False)
         classes_priors = predicted_masks.detach().exp().mean(dim=(0, 2, 3))
         self.run.log({f'class_{k}': prior.item() for k, prior in enumerate(classes_priors)})
-        return prediction_loss + direction_loss
+        return penalty - likelihood + prediction_kl
 
     def validation_step(self, batch, batch_idx):
         losses, masks = self.step(batch)

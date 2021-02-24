@@ -47,4 +47,5 @@ class EMMaskGenerator(torch.nn.Module):
                                           n_classes, batch_size, rgb_channels, device)
             generated_masks = self.e_step(padded_images, shifted_images, ops, sigmas,
                                           n_classes, image_shape, batch_size)
+        # generated_images = torch.einsum('ukab, ubij, ukij -> uaij', ops, padded_images, generated_masks.softmax(dim=1))
         return generated_masks

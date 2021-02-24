@@ -37,10 +37,13 @@ if run.config.seed is not None:
 gan = UnconditionalBigGAN.load(run.config.gan_weights, run.config.gan_resolution, run.config.gan_device)
 mask_generator = EMMaskGenerator(em_steps=run.config.em_steps)
 backbone = UNet(in_channels=3, out_channels=run.config.n_classes)
-shifted_backbone = UNet(in_channels=3, out_channels=run.config.n_classes)
 if run.config.backbone_weights is not None:
     weights = torch.load(run.config.backbone_weights, map_location='cpu')
     backbone.load_state_dict(weights)
+shifted_backbone = UNet(in_channels=3, out_channels=run.config.n_classes)
+if run.config.shifted_backbone_weights is not None:
+    weights = torch.load(run.config.shifted_backbone_weights, map_location='cpu')
+    shifted_backbone.load_state_dict(weights)
 model = SegmentationModel(run, gan, mask_generator, backbone, shifted_backbone)
 
 trainer = pl.Trainer(
