@@ -26,18 +26,26 @@ class SegmentationDataset(Dataset):
             raise RuntimeError(f'images and masks filenames are not aligned in "{self.path}"')
         self.items = [(images[name], masks[name]) for name in images]
 
-        self.basic_transforms = transforms.Compose([
-            Image.open,
-            transforms.Resize(resolution),
-            transforms.CenterCrop(resolution),
-            transforms.ToTensor()
-        ])
+        # self.basic_transforms = transforms.Compose([
+        #     Image.open,
+        #     transforms.Resize(resolution),
+        #     transforms.CenterCrop(resolution),
+        #     transforms.ToTensor()
+        # ])
         self.image_transforms = transforms.Compose([
-            self.basic_transforms,
-            self._image_processing
+            Image.open,
+            transforms.Resize(resolution, Image.CUBIC),
+            transforms.CenterCrop(resolution),
+            transforms.ToTensor(),
+            self._image_processing,
+            transforms.Normalize(std=torch.tensor([0.1829540508368939, 0.18656561047509476, 0.18447508988480435]),
+                                 mean=torch.tensor([0.29010095242892997, 0.32808144844279574, 0.28696394422942517]))
         ])
         self.mask_transforms = transforms.Compose([
-            self.basic_transforms,
+            Image.open,
+            transforms.Resize(resolution, Image.NEAREST),
+            transforms.CenterCrop(resolution),
+            transforms.ToTensor(),
             self._mask_processing
         ])
 

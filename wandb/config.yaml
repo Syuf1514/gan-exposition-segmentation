@@ -13,6 +13,7 @@ embeddings:
 test_datasets:
   desc: paths to datasets with ground truth masks to test the model on
   value:
+    - data/PASCAL
     - data/CUB
     - data/flowers
     - data/ECSSD
