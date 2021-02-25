@@ -57,11 +57,15 @@ class SegmentationModel(pl.LightningModule):
         prediction_kl = torch.sum(normalized_reference.exp() * (normalized_reference - predicted_masks), dim=1).mean()
         likelihood = reference_masks.logsumexp(dim=1).mean()
         # likelihood = torch.sum(generated_masks.softmax(dim=1) * shifted_masks, dim=1).mean()
-        # generated_images = shifted_images - shifted_images.mean(dim=(0, 2, 3)).reshape(1, -1, 1, 1) + \
-        #                    images.mean(dim=(0, 2, 3)).reshape(1, -1, 1, 1)
-        # penalty = 0.1 * torch.mean((images.sigmoid() - generated_images.sigmoid()) ** 2,
-        #                            dim=(1, 2, 3)).reciprocal().mean()
-        penalty = 1.5 * penalty_masks.mean()
+        sigmoid_images = images.sigmoid()
+        normalized_images = (sigmoid_images - sigmoid_images.mean(dim=(0, 2, 3)).reshape(1, -1, 1, 1)) / \
+                            sigmoid_images.std(dim=(0, 2, 3)).reshape(1, -1, 1, 1)
+        sigmoid_shifted_images = shifted_images.sigmoid()
+        normalized_shifted_images = (sigmoid_shifted_images - sigmoid_shifted_images.mean(dim=(0, 2, 3)).reshape(1, -1, 1, 1)) / \
+                                    sigmoid_shifted_images.std(dim=(0, 2, 3)).reshape(1, -1, 1, 1)
+        penalty = 1.0 * torch.mean((normalized_images - normalized_shifted_images) ** 2,
+                                    dim=(1, 2, 3)).reciprocal().mean()
+        # penalty = 1.5 * penalty_masks.mean()
         return (prediction_kl, likelihood, penalty), \
                (predicted_masks, shifted_masks, generated_masks, reference_masks)
 

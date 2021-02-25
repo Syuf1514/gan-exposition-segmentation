@@ -70,7 +70,7 @@ gan_device:
   value: 1
 train_samples:
   desc: number of samples to use on each epoch for training the model
-  value: 25000
+  value: 5000
 seed:
   desc: random seed
   value: null
