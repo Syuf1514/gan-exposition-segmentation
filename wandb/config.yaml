@@ -9,7 +9,7 @@ shifted_backbone_weights:
   value: null
 direction:
   desc: latent direction path if want to load
-  value: null
+  value: weights/random_direction.pth
 embeddings:
   desc: dataset images embeddings path for training
   value: embeddings/cub.pth
@@ -42,7 +42,7 @@ learning_rate:
   value: 0.001
 lr_decay:
   desc: factor which learning rates are multiplied by after every epoch
-  value: 0.9
+  value: 1.0
 
 train_model:
   desc: whether to train the model or not

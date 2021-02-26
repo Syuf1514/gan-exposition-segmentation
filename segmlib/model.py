@@ -53,21 +53,22 @@ class SegmentationModel(pl.LightningModule):
         predicted_masks = self.backbone(images.sigmoid()).log_softmax(dim=1)
         shifted_masks = self.shifted_backbone(shifted_images.sigmoid()).log_softmax(dim=1)
         generated_masks = self.mask_generator((shifted_images, images, shifted_masks))
-        # penalty_masks = self.trivial_mask_generator((shifted_images.sigmoid(), images.sigmoid()))
+        penalty_masks = self.trivial_mask_generator((shifted_images, images))
         reference_masks = shifted_masks + generated_masks
-        normalized_reference = reference_masks.detach().log_softmax(dim=1)
-        prediction_kl = torch.sum(normalized_reference.exp() * (normalized_reference - predicted_masks), dim=1).mean()
+        # normalized_reference = reference_masks.detach().log_softmax(dim=1)
+        # prediction_kl = torch.sum(normalized_reference.exp() * (normalized_reference - predicted_masks), dim=1).mean()
+        prediction_kl = torch.sum(predicted_masks.exp() * (predicted_masks - shifted_masks), dim=1).mean()
         likelihood = reference_masks.logsumexp(dim=1).mean()
-        sigmoid_images = images.sigmoid()
-        normalized_images = (sigmoid_images - sigmoid_images.mean(dim=(0, 2, 3)).reshape(1, -1, 1, 1)) / \
-                            sigmoid_images.std(dim=(0, 2, 3)).reshape(1, -1, 1, 1)
-        sigmoid_shifted_images = shifted_images.sigmoid()
-        normalized_shifted_images = (sigmoid_shifted_images - sigmoid_shifted_images.mean(dim=(0, 2, 3)).reshape(1, -1, 1, 1)) / \
-                                    sigmoid_shifted_images.std(dim=(0, 2, 3)).reshape(1, -1, 1, 1)
-        penalty = 1.0 * torch.mean((normalized_images - normalized_shifted_images) ** 2,
-                                    dim=(1, 2, 3)).reciprocal().mean()
+        # sigmoid_images = images.sigmoid()
+        # normalized_images = (sigmoid_images - sigmoid_images.mean(dim=(0, 2, 3)).reshape(1, -1, 1, 1)) / \
+        #                     sigmoid_images.std(dim=(0, 2, 3)).reshape(1, -1, 1, 1)
+        # sigmoid_shifted_images = shifted_images.sigmoid()
+        # normalized_shifted_images = (sigmoid_shifted_images - sigmoid_shifted_images.mean(dim=(0, 2, 3)).reshape(1, -1, 1, 1)) / \
+        #                             sigmoid_shifted_images.std(dim=(0, 2, 3)).reshape(1, -1, 1, 1)
+        # penalty = 1.0 * torch.mean((normalized_images - normalized_shifted_images) ** 2,
+        #                             dim=(1, 2, 3)).reciprocal().mean()
         # penalty = 1.5 * penalty_masks.mean() - 7.0
-        # penalty = 2.0 * penalty_masks.mean()
+        penalty = penalty_masks.mean()
         return (prediction_kl, likelihood, penalty), \
                (predicted_masks, shifted_masks, generated_masks, reference_masks)
 
@@ -82,7 +83,7 @@ class SegmentationModel(pl.LightningModule):
         }, commit=False)
         classes_priors = predicted_masks.detach().exp().mean(dim=(0, 2, 3))
         self.run.log({f'class_{k}': prior.item() for k, prior in enumerate(classes_priors)})
-        return penalty - likelihood + prediction_kl
+        return 1.0 * penalty - likelihood + 1.0 * prediction_kl
 
     def validation_step(self, batch, batch_idx):
         losses, masks = self.step(batch)
