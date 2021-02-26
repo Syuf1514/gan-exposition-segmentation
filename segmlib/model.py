@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 
 from .datasets import GenerationDataset, SegmentationDataset
 from .metrics import accuracy, binary_iou, binary_fbeta
+from .mask_generators import TrivialMaskGenerator
 
 
 class SegmentationModel(pl.LightningModule):
@@ -18,6 +19,7 @@ class SegmentationModel(pl.LightningModule):
         self.run = run
         self.gan = gan
         self.mask_generator = mask_generator
+        self.trivial_mask_generator = TrivialMaskGenerator()
         self.backbone = backbone
         self.shifted_backbone = shifted_backbone
         self.hparams = dict(run.config)
@@ -51,12 +53,11 @@ class SegmentationModel(pl.LightningModule):
         predicted_masks = self.backbone(images.sigmoid()).log_softmax(dim=1)
         shifted_masks = self.shifted_backbone(shifted_images.sigmoid()).log_softmax(dim=1)
         generated_masks = self.mask_generator((shifted_images, images, shifted_masks))
-        penalty_masks = self.mask_generator((shifted_images, images, torch.zeros_like(predicted_masks)[:, :1]))
+        # penalty_masks = self.trivial_mask_generator((shifted_images.sigmoid(), images.sigmoid()))
         reference_masks = shifted_masks + generated_masks
         normalized_reference = reference_masks.detach().log_softmax(dim=1)
         prediction_kl = torch.sum(normalized_reference.exp() * (normalized_reference - predicted_masks), dim=1).mean()
         likelihood = reference_masks.logsumexp(dim=1).mean()
-        # likelihood = torch.sum(generated_masks.softmax(dim=1) * shifted_masks, dim=1).mean()
         sigmoid_images = images.sigmoid()
         normalized_images = (sigmoid_images - sigmoid_images.mean(dim=(0, 2, 3)).reshape(1, -1, 1, 1)) / \
                             sigmoid_images.std(dim=(0, 2, 3)).reshape(1, -1, 1, 1)
@@ -65,7 +66,8 @@ class SegmentationModel(pl.LightningModule):
                                     sigmoid_shifted_images.std(dim=(0, 2, 3)).reshape(1, -1, 1, 1)
         penalty = 1.0 * torch.mean((normalized_images - normalized_shifted_images) ** 2,
                                     dim=(1, 2, 3)).reciprocal().mean()
-        # penalty = 1.5 * penalty_masks.mean()
+        # penalty = 1.5 * penalty_masks.mean() - 7.0
+        # penalty = 2.0 * penalty_masks.mean()
         return (prediction_kl, likelihood, penalty), \
                (predicted_masks, shifted_masks, generated_masks, reference_masks)
 

@@ -9,7 +9,7 @@ import torch
 
 from pathlib import Path
 
-from segmlib import UnconditionalBigGAN, UNet, SegmentationModel, EMMaskGenerator
+from segmlib import UnconditionalBigGAN, UNet, SegmentationModel, EMMaskGenerator, GlobalEMMaskGenerator
 
 
 os.environ['WANDB_SILENT'] = 'true'
@@ -35,7 +35,7 @@ if run.config.seed is not None:
     pl.seed_everything(run.config.seed)
 
 gan = UnconditionalBigGAN.load(run.config.gan_weights, run.config.gan_resolution, run.config.gan_device)
-mask_generator = EMMaskGenerator(em_steps=run.config.em_steps)
+mask_generator = GlobalEMMaskGenerator(em_steps=run.config.em_steps)
 backbone = UNet(in_channels=3, out_channels=run.config.n_classes)
 if run.config.backbone_weights is not None:
     weights = torch.load(run.config.backbone_weights, map_location='cpu')

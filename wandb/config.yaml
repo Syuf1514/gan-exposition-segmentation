@@ -42,7 +42,7 @@ learning_rate:
   value: 0.001
 lr_decay:
   desc: factor which learning rates are multiplied by after every epoch
-  value: 1.0
+  value: 0.9
 
 train_model:
   desc: whether to train the model or not
