@@ -1,0 +1,70 @@
+gan_weights:
+  desc: GAN weights path
+  value: weights/bigbigan.pth
+backbone_weights:
+  desc: backbone weights path if want to load
+  value: null
+direction:
+  desc: latent direction path
+  value: weights/small_random_direction.pth
+embeddings:
+  desc: dataset images embeddings path for training
+  value: embeddings/cub.pth
+test_datasets:
+  desc: paths to datasets with ground truth masks to test the model on
+  value:
+    - data/CUB
+    - data/DUTS
+    - data/flowers
+    - data/ECSSD
+    - data/OMRON
+
+n_classes:
+  desc: number of the segmentation classes
+  value: 3
+z_noise:
+  desc: amplitude of z noise
+  value: 0.1
+z_shift:
+  desc: norm of the shift along the latent direction
+  value: 5.0
+fbeta_beta:
+  desc: beta value for the F_beta metric
+  value: 0.55
+learning_rate:
+  desc: model learning rate
+  value: 0.001
+lr_decay:
+  desc: factor which learning rates are multiplied by after every epoch
+  value: 0.8
+
+train_model:
+  desc: whether to train the model or not
+  value: true
+train_direction:
+  desc: whether to train the latent direction or not
+  value: false
+epochs:
+  desc: number of epochs to train the model
+  value: 10
+gan_resolution:
+  desc: width and height of generated square images by GAN
+  value: 128
+model_batch_size:
+  desc: the size of minibatches for the segmentation model
+  value: 64
+gan_batch_size:
+  desc: the size of minibatches for GAN generator
+  value: 128
+model_device:
+  desc: CUDA device to use for the model training
+  value: 0
+gan_device:
+  desc: CUDA device to use for generating images with the GAN
+  value: 1
+train_samples:
+  desc: number of samples to use on each epoch for training the model
+  value: 25000
+seed:
+  desc: random seed
+  value: null
